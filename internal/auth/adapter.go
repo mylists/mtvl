@@ -47,3 +47,16 @@ func (e *ExternalAuthProvider) VerifyToken(ctx context.Context, tokenString stri
 
 	return nil, fmt.Errorf("external token verification failed: %w", ErrInvalidToken)
 }
+
+func (e *ExternalAuthProvider) UpdateUser(ctx context.Context, userID int64, username, email string) (*User, error) {
+	return nil, errors.New("user profile updates handled by external auth provider portal")
+}
+
+func (e *ExternalAuthProvider) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
+	return errors.New("password updates handled by external auth provider portal")
+}
+
+func (e *ExternalAuthProvider) DeleteUser(ctx context.Context, userID int64) error {
+	return errors.New("account deletion handled by external auth provider portal")
+}
+

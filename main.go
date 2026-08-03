@@ -18,14 +18,43 @@ import (
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
 	"mtvl/internal/db"
+	"mtvl/internal/docs"
+	"mtvl/internal/modules/books"
 	"mtvl/internal/modules/movies"
 	"mtvl/internal/modules/tvshows"
+	"mtvl/internal/services"
 )
 
 // Embed goose SQL migrations
 //
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+func corsMiddleware(allowedOrigins string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			} else if allowedOrigins != "*" {
+				origin = allowedOrigins
+			}
+
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, X-Request-ID")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "300")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 func main() {
 	cfg := config.LoadConfig()
@@ -54,8 +83,10 @@ func main() {
 	registry := core.NewRegistry()
 	registry.Register(movies.NewModule(database))
 	registry.Register(tvshows.NewModule(database))
+	registry.Register(books.NewModule(database))
 
 	router := chi.NewRouter()
+	router.Use(corsMiddleware(cfg.CORSAllowedOrigins))
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
@@ -114,15 +145,92 @@ func main() {
 			})
 		})
 
-		r.With(auth.Middleware(authProvider)).Get("/me", func(w http.ResponseWriter, r *http.Request) {
-			user, _ := auth.GetUserFromContext(r.Context())
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(user)
+		r.Group(func(sub chi.Router) {
+			sub.Use(auth.Middleware(authProvider))
+
+			sub.Get("/me", func(w http.ResponseWriter, r *http.Request) {
+				user, _ := auth.GetUserFromContext(r.Context())
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(user)
+			})
+
+			sub.Put("/me", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				var req struct {
+					Username string `json:"username"`
+					Email    string `json:"email"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+					return
+				}
+				updatedUser, err := authProvider.UpdateUser(r.Context(), user.ID, req.Username, req.Email)
+				if err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(updatedUser)
+			})
+
+			sub.Put("/password", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				var req struct {
+					OldPassword string `json:"old_password"`
+					NewPassword string `json:"new_password"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+					return
+				}
+				if err := authProvider.ChangePassword(r.Context(), user.ID, req.OldPassword, req.NewPassword); err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
+			})
+
+			sub.Delete("/me", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				if err := authProvider.DeleteUser(r.Context(), user.ID); err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "Account deleted successfully"})
+			})
 		})
 	})
 
 	// Register Category Extensions API Routes
 	registry.RegisterAllRoutes(router, auth.Middleware(authProvider))
+
+	// Register Services (Stats, Global Search, Export/Import)
+	serviceHandler := services.NewServiceHandler(database)
+	serviceHandler.RegisterRoutes(router, auth.Middleware(authProvider))
+
+	// Register Docs (OpenAPI Spec & Interactive Swagger UI)
+	docsHandler := docs.NewDocsHandler()
+	docsHandler.RegisterRoutes(router)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

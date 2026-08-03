@@ -11,6 +11,7 @@ type Config struct {
 	DBDSN            string
 	JWTSecret        string
 	AuthProviderType string // "jwt", "external"
+	CORSAllowedOrigins string
 }
 
 // LoadConfig loads configuration from environment variables with sensible defaults.
@@ -20,13 +21,15 @@ func LoadConfig() *Config {
 	dsn := getEnv("DB_DSN", "postgres://postgres:postgres@localhost:5432/mtvl?sslmode=disable")
 	secret := getEnv("JWT_SECRET", "super-secret-key-change-in-production")
 	authType := getEnv("AUTH_PROVIDER", "jwt")
+	cors := getEnv("CORS_ALLOWED_ORIGINS", "*")
 
 	return &Config{
-		ServerPort:       port,
-		DBDriver:         driver,
-		DBDSN:            dsn,
-		JWTSecret:        secret,
-		AuthProviderType: authType,
+		ServerPort:         port,
+		DBDriver:           driver,
+		DBDSN:              dsn,
+		JWTSecret:          secret,
+		AuthProviderType:   authType,
+		CORSAllowedOrigins: cors,
 	}
 }
 
