@@ -6,9 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
@@ -20,12 +21,10 @@ import (
 )
 
 func TestFullServerIntegrationFlow(t *testing.T) {
-	database, mock, err := sqlmock.New()
+	database, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("failed to open mock database: %v", err)
+		t.Fatalf("failed to open in-memory database: %v", err)
 	}
-	defer database.Close()
-	_ = mock
 
 	authProvider := auth.NewJWTAuthProvider(database, "test-secret-key")
 
@@ -99,3 +98,4 @@ func TestFullServerIntegrationFlow(t *testing.T) {
 		t.Fatalf("docs UI failed: %d", rr.Code)
 	}
 }
+

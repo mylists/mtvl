@@ -1,25 +1,26 @@
 package tvshows
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
 )
 
 // Module implements core.CategoryModule for TV Shows.
 type Module struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewModule initializes a new TV Shows CategoryModule.
-func NewModule(db *sql.DB) *Module {
+func NewModule(db *gorm.DB) *Module {
 	return &Module{db: db}
 }
 
@@ -60,21 +61,16 @@ func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	whereClauses := []string{"user_id = ?"}
-	args := []interface{}{user.ID}
+	query := m.db.WithContext(r.Context()).Model(&TVShow{}).Where("user_id = ?", user.ID)
 
 	if statusFilter != "" {
-		whereClauses = append(whereClauses, "status = ?")
-		args = append(args, statusFilter)
+		query = query.Where("status = ?", statusFilter)
 	}
 
 	if qParam != "" {
-		whereClauses = append(whereClauses, "(LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)")
 		pattern := "%" + strings.ToLower(qParam) + "%"
-		args = append(args, pattern, pattern)
+		query = query.Where("(LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", pattern, pattern)
 	}
-
-	whereStmt := strings.Join(whereClauses, " AND ")
 
 	validSortColumns := map[string]string{
 		"id":              "id",
@@ -115,38 +111,29 @@ func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var total int
+	var total int64
 	if isPaginated {
-		countQuery := "SELECT COUNT(*) FROM tv_shows WHERE " + whereStmt
-		_ = m.db.QueryRowContext(r.Context(), countQuery, args...).Scan(&total)
+		if err := query.Count(&total).Error; err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to count TV shows: "+err.Error())
+			return
+		}
 	}
 
-	query := "SELECT id, user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at FROM tv_shows WHERE " + whereStmt + " ORDER BY " + sortCol + " " + strings.ToUpper(orderParam)
+	query = query.Order(sortCol + " " + strings.ToUpper(orderParam))
 
 	if isPaginated {
 		offset := (page - 1) * limit
-		query += " LIMIT " + strconv.Itoa(limit) + " OFFSET " + strconv.Itoa(offset)
+		query = query.Offset(offset).Limit(limit)
 	}
 
-	rows, err := m.db.QueryContext(r.Context(), query, args...)
-	if err != nil {
+	shows := make([]TVShow, 0)
+	if err := query.Find(&shows).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch TV shows: "+err.Error())
 		return
 	}
-	defer rows.Close()
-
-	shows := make([]TVShow, 0)
-	for rows.Next() {
-		var show TVShow
-		if err := rows.Scan(&show.ID, &show.UserID, &show.Title, &show.CurrentSeason, &show.CurrentEpisode, &show.TotalEpisodes, &show.Status, &show.Rating, &show.Notes, &show.CreatedAt, &show.UpdatedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to scan TV show: "+err.Error())
-			return
-		}
-		shows = append(shows, show)
-	}
 
 	if isPaginated {
-		totalPages := (total + limit - 1) / limit
+		totalPages := (int(total) + limit - 1) / limit
 		if totalPages < 0 {
 			totalPages = 0
 		}
@@ -180,25 +167,15 @@ func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
-	args := make([]interface{}, 0, len(req.IDs)+1)
-	args = append(args, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-
-	query := "DELETE FROM tv_shows WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to bulk delete TV shows: "+err.Error())
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&TVShow{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to bulk delete TV shows: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "TV shows deleted successfully",
-		"deleted_count": rowsAffected,
+		"deleted_count": res.RowsAffected,
 	})
 }
 
@@ -218,26 +195,22 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
 	now := time.Now()
-	args := make([]interface{}, 0, len(req.IDs)+3)
-	args = append(args, req.Status, now, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
+	res := m.db.WithContext(r.Context()).Model(&TVShow{}).
+		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Updates(map[string]interface{}{
+			"status":     req.Status,
+			"updated_at": now,
+		})
 
-	query := "UPDATE tv_shows SET status = ?, updated_at = ? WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to bulk update status: "+err.Error())
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to bulk update status: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "TV shows status updated successfully",
-		"updated_count": rowsAffected,
+		"updated_count": res.RowsAffected,
 	})
 }
 
@@ -277,16 +250,7 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := `INSERT INTO tv_shows (user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	res, err := m.db.ExecContext(r.Context(), query, user.ID, req.Title, req.CurrentSeason, req.CurrentEpisode, req.TotalEpisodes, req.Status, req.Rating, req.Notes, now, now)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to insert TV show: "+err.Error())
-		return
-	}
-
-	id, _ := res.LastInsertId()
 	show := TVShow{
-		ID:             id,
 		UserID:         user.ID,
 		Title:          req.Title,
 		CurrentSeason:  req.CurrentSeason,
@@ -297,6 +261,11 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 		Notes:          req.Notes,
 		CreatedAt:      now,
 		UpdatedAt:      now,
+	}
+
+	if err := m.db.WithContext(r.Context()).Create(&show).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to insert TV show: "+err.Error())
+		return
 	}
 
 	respondJSON(w, http.StatusCreated, show)
@@ -317,9 +286,8 @@ func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var show TVShow
-	query := `SELECT id, user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at FROM tv_shows WHERE id = ? AND user_id = ?`
-	err = m.db.QueryRowContext(r.Context(), query, id, user.ID).Scan(&show.ID, &show.UserID, &show.Title, &show.CurrentSeason, &show.CurrentEpisode, &show.TotalEpisodes, &show.Status, &show.Rating, &show.Notes, &show.CreatedAt, &show.UpdatedAt)
-	if err == sql.ErrNoRows {
+	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&show).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
 	} else if err != nil {
@@ -360,15 +328,25 @@ func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := `UPDATE tv_shows SET title = ?, current_season = ?, current_episode = ?, total_episodes = ?, status = ?, rating = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`
-	res, err := m.db.ExecContext(r.Context(), query, req.Title, req.CurrentSeason, req.CurrentEpisode, req.TotalEpisodes, req.Status, req.Rating, req.Notes, now, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to update TV show: "+err.Error())
+	res := m.db.WithContext(r.Context()).Model(&TVShow{}).
+		Where("id = ? AND user_id = ?", id, user.ID).
+		Updates(map[string]interface{}{
+			"title":           req.Title,
+			"current_season":  req.CurrentSeason,
+			"current_episode": req.CurrentEpisode,
+			"total_episodes":  req.TotalEpisodes,
+			"status":          req.Status,
+			"rating":          req.Rating,
+			"notes":           req.Notes,
+			"updated_at":      now,
+		})
+
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update TV show: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
 	}
@@ -390,15 +368,13 @@ func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `DELETE FROM tv_shows WHERE id = ? AND user_id = ?`
-	res, err := m.db.ExecContext(r.Context(), query, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to delete TV show: "+err.Error())
+	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&TVShow{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to delete TV show: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
 	}
@@ -415,3 +391,4 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
+

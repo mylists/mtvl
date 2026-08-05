@@ -1,13 +1,13 @@
 package services
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 
 	"mtvl/internal/auth"
 	"mtvl/internal/modules/books"
@@ -16,10 +16,10 @@ import (
 )
 
 type ServiceHandler struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func NewServiceHandler(db *sql.DB) *ServiceHandler {
+func NewServiceHandler(db *gorm.DB) *ServiceHandler {
 	return &ServiceHandler{db: db}
 }
 
@@ -34,6 +34,16 @@ func (s *ServiceHandler) RegisterRoutes(r chi.Router, authMw func(http.Handler) 
 	})
 }
 
+type StatResult struct {
+	Count int64   `gorm:"column:count"`
+	Avg   float64 `gorm:"column:avg"`
+}
+
+type StatusCount struct {
+	Status string `gorm:"column:status"`
+	Count  int    `gorm:"column:count"`
+}
+
 // GetStats returns aggregated dashboard statistics across all tracking categories.
 func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
@@ -45,77 +55,59 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Movies stats
-	var movieTotal int
-	var movieAvgRating float64
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(AVG(rating), 0) FROM movies WHERE user_id = ?`, user.ID).Scan(&movieTotal, &movieAvgRating)
+	var movieStat StatResult
+	_ = s.db.WithContext(ctx).Model(&movies.Movie{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&movieStat)
 
 	movieStatusBreakdown := make(map[string]int)
-	mRows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM movies WHERE user_id = ? GROUP BY status`, user.ID)
-	if err == nil {
-		for mRows.Next() {
-			var st string
-			var cnt int
-			if err := mRows.Scan(&st, &cnt); err == nil {
-				movieStatusBreakdown[st] = cnt
-			}
+	var movieCounts []StatusCount
+	if err := s.db.WithContext(ctx).Model(&movies.Movie{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&movieCounts).Error; err == nil {
+		for _, c := range movieCounts {
+			movieStatusBreakdown[c.Status] = c.Count
 		}
-		mRows.Close()
 	}
 
 	// TV Shows stats
-	var tvTotal int
-	var tvAvgRating float64
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(AVG(rating), 0) FROM tv_shows WHERE user_id = ?`, user.ID).Scan(&tvTotal, &tvAvgRating)
+	var tvStat StatResult
+	_ = s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&tvStat)
 
 	tvStatusBreakdown := make(map[string]int)
-	tRows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM tv_shows WHERE user_id = ? GROUP BY status`, user.ID)
-	if err == nil {
-		for tRows.Next() {
-			var st string
-			var cnt int
-			if err := tRows.Scan(&st, &cnt); err == nil {
-				tvStatusBreakdown[st] = cnt
-			}
+	var tvCounts []StatusCount
+	if err := s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&tvCounts).Error; err == nil {
+		for _, c := range tvCounts {
+			tvStatusBreakdown[c.Status] = c.Count
 		}
-		tRows.Close()
 	}
 
 	// Books stats
-	var bookTotal int
-	var bookAvgRating float64
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(AVG(rating), 0) FROM books WHERE user_id = ?`, user.ID).Scan(&bookTotal, &bookAvgRating)
+	var bookStat StatResult
+	_ = s.db.WithContext(ctx).Model(&books.Book{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&bookStat)
 
 	bookStatusBreakdown := make(map[string]int)
-	bRows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM books WHERE user_id = ? GROUP BY status`, user.ID)
-	if err == nil {
-		for bRows.Next() {
-			var st string
-			var cnt int
-			if err := bRows.Scan(&st, &cnt); err == nil {
-				bookStatusBreakdown[st] = cnt
-			}
+	var bookCounts []StatusCount
+	if err := s.db.WithContext(ctx).Model(&books.Book{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&bookCounts).Error; err == nil {
+		for _, c := range bookCounts {
+			bookStatusBreakdown[c.Status] = c.Count
 		}
-		bRows.Close()
 	}
 
-	totalItems := movieTotal + tvTotal + bookTotal
+	totalItems := movieStat.Count + tvStat.Count + bookStat.Count
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"total_items": totalItems,
 		"categories": map[string]interface{}{
 			"movies": map[string]interface{}{
-				"total":            movieTotal,
-				"average_rating":   movieAvgRating,
+				"total":            movieStat.Count,
+				"average_rating":   movieStat.Avg,
 				"status_breakdown": movieStatusBreakdown,
 			},
 			"tv_shows": map[string]interface{}{
-				"total":            tvTotal,
-				"average_rating":   tvAvgRating,
+				"total":            tvStat.Count,
+				"average_rating":   tvStat.Avg,
 				"status_breakdown": tvStatusBreakdown,
 			},
 			"books": map[string]interface{}{
-				"total":            bookTotal,
-				"average_rating":   bookAvgRating,
+				"total":            bookStat.Count,
+				"average_rating":   bookStat.Avg,
 				"status_breakdown": bookStatusBreakdown,
 			},
 		},
@@ -141,42 +133,15 @@ func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Search movies
 	movieResults := make([]movies.Movie, 0)
-	mRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, release_year, director, status, rating, notes, created_at, updated_at FROM movies WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?)`, user.ID, pattern, pattern, pattern)
-	if err == nil {
-		for mRows.Next() {
-			var mov movies.Movie
-			if err := mRows.Scan(&mov.ID, &mov.UserID, &mov.Title, &mov.ReleaseYear, &mov.Director, &mov.Status, &mov.Rating, &mov.Notes, &mov.CreatedAt, &mov.UpdatedAt); err == nil {
-				movieResults = append(movieResults, mov)
-			}
-		}
-		mRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern, pattern).Find(&movieResults).Error
 
 	// Search tv shows
 	tvResults := make([]tvshows.TVShow, 0)
-	tRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at FROM tv_shows WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)`, user.ID, pattern, pattern)
-	if err == nil {
-		for tRows.Next() {
-			var show tvshows.TVShow
-			if err := tRows.Scan(&show.ID, &show.UserID, &show.Title, &show.CurrentSeason, &show.CurrentEpisode, &show.TotalEpisodes, &show.Status, &show.Rating, &show.Notes, &show.CreatedAt, &show.UpdatedAt); err == nil {
-				tvResults = append(tvResults, show)
-			}
-		}
-		tRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern).Find(&tvResults).Error
 
 	// Search books
 	bookResults := make([]books.Book, 0)
-	bRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, status, rating, notes, created_at, updated_at FROM books WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)`, user.ID, pattern, pattern)
-	if err == nil {
-		for bRows.Next() {
-			var book books.Book
-			if err := bRows.Scan(&book.ID, &book.UserID, &book.Title, &book.Status, &book.Rating, &book.Notes, &book.CreatedAt, &book.UpdatedAt); err == nil {
-				bookResults = append(bookResults, book)
-			}
-		}
-		bRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern).Find(&bookResults).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"query": queryTerm,
@@ -201,42 +166,15 @@ func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) 
 
 	// Movies
 	movieList := make([]movies.Movie, 0)
-	mRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, release_year, director, status, rating, notes, created_at, updated_at FROM movies WHERE user_id = ? ORDER BY id ASC`, user.ID)
-	if err == nil {
-		for mRows.Next() {
-			var mov movies.Movie
-			if err := mRows.Scan(&mov.ID, &mov.UserID, &mov.Title, &mov.ReleaseYear, &mov.Director, &mov.Status, &mov.Rating, &mov.Notes, &mov.CreatedAt, &mov.UpdatedAt); err == nil {
-				movieList = append(movieList, mov)
-			}
-		}
-		mRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&movieList).Error
 
 	// TV Shows
 	tvList := make([]tvshows.TVShow, 0)
-	tRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at FROM tv_shows WHERE user_id = ? ORDER BY id ASC`, user.ID)
-	if err == nil {
-		for tRows.Next() {
-			var show tvshows.TVShow
-			if err := tRows.Scan(&show.ID, &show.UserID, &show.Title, &show.CurrentSeason, &show.CurrentEpisode, &show.TotalEpisodes, &show.Status, &show.Rating, &show.Notes, &show.CreatedAt, &show.UpdatedAt); err == nil {
-				tvList = append(tvList, show)
-			}
-		}
-		tRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&tvList).Error
 
 	// Books
 	bookList := make([]books.Book, 0)
-	bRows, err := s.db.QueryContext(ctx, `SELECT id, user_id, title, status, rating, notes, created_at, updated_at FROM books WHERE user_id = ? ORDER BY id ASC`, user.ID)
-	if err == nil {
-		for bRows.Next() {
-			var book books.Book
-			if err := bRows.Scan(&book.ID, &book.UserID, &book.Title, &book.Status, &book.Rating, &book.Notes, &book.CreatedAt, &book.UpdatedAt); err == nil {
-				bookList = append(bookList, book)
-			}
-		}
-		bRows.Close()
-	}
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&bookList).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"version":     "1.0",
@@ -293,70 +231,97 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ctx := r.Context()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to begin transaction: "+err.Error())
-		return
-	}
-	defer tx.Rollback()
-
-	if req.Overwrite {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM movies WHERE user_id = ?`, user.ID)
-		_, _ = tx.ExecContext(ctx, `DELETE FROM tv_shows WHERE user_id = ?`, user.ID)
-		_, _ = tx.ExecContext(ctx, `DELETE FROM books WHERE user_id = ?`, user.ID)
-	}
-
-	now := time.Now()
 	var importedMovies, importedTVShows, importedBooks int
 
-	for _, mov := range req.Data.Movies {
-		if strings.TrimSpace(mov.Title) == "" {
-			continue
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if req.Overwrite {
+			tx.Where("user_id = ?", user.ID).Delete(&movies.Movie{})
+			tx.Where("user_id = ?", user.ID).Delete(&tvshows.TVShow{})
+			tx.Where("user_id = ?", user.ID).Delete(&books.Book{})
 		}
-		status := mov.Status
-		if status == "" {
-			status = "plan_to_watch"
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO movies (user_id, title, release_year, director, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, user.ID, mov.Title, mov.ReleaseYear, mov.Director, status, mov.Rating, mov.Notes, now, now)
-		if err == nil {
-			importedMovies++
-		}
-	}
 
-	for _, show := range req.Data.TVShows {
-		if strings.TrimSpace(show.Title) == "" {
-			continue
-		}
-		status := show.Status
-		if status == "" {
-			status = "watching"
-		}
-		season := show.CurrentSeason
-		if season <= 0 {
-			season = 1
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO tv_shows (user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, user.ID, show.Title, season, show.CurrentEpisode, show.TotalEpisodes, status, show.Rating, show.Notes, now, now)
-		if err == nil {
-			importedTVShows++
-		}
-	}
+		now := time.Now()
 
-	for _, book := range req.Data.Books {
-		if strings.TrimSpace(book.Title) == "" {
-			continue
+		for _, mov := range req.Data.Movies {
+			if strings.TrimSpace(mov.Title) == "" {
+				continue
+			}
+			status := mov.Status
+			if status == "" {
+				status = "plan_to_watch"
+			}
+			m := movies.Movie{
+				UserID:      user.ID,
+				Title:       mov.Title,
+				ReleaseYear: mov.ReleaseYear,
+				Director:    mov.Director,
+				Status:      status,
+				Rating:      mov.Rating,
+				Notes:       mov.Notes,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			if err := tx.Create(&m).Error; err == nil {
+				importedMovies++
+			}
 		}
-		status := book.Status
-		if status == "" {
-			status = "plan_to_read"
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO books (user_id, title, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, user.ID, book.Title, status, book.Rating, book.Notes, now, now)
-		if err == nil {
-			importedBooks++
-		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to commit import transaction: "+err.Error())
+		for _, show := range req.Data.TVShows {
+			if strings.TrimSpace(show.Title) == "" {
+				continue
+			}
+			status := show.Status
+			if status == "" {
+				status = "watching"
+			}
+			season := show.CurrentSeason
+			if season <= 0 {
+				season = 1
+			}
+			t := tvshows.TVShow{
+				UserID:         user.ID,
+				Title:          show.Title,
+				CurrentSeason:  season,
+				CurrentEpisode: show.CurrentEpisode,
+				TotalEpisodes:  show.TotalEpisodes,
+				Status:         status,
+				Rating:         show.Rating,
+				Notes:          show.Notes,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			if err := tx.Create(&t).Error; err == nil {
+				importedTVShows++
+			}
+		}
+
+		for _, book := range req.Data.Books {
+			if strings.TrimSpace(book.Title) == "" {
+				continue
+			}
+			status := book.Status
+			if status == "" {
+				status = "plan_to_read"
+			}
+			b := books.Book{
+				UserID:    user.ID,
+				Title:     book.Title,
+				Status:    status,
+				Rating:    book.Rating,
+				Notes:     book.Notes,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			if err := tx.Create(&b).Error; err == nil {
+				importedBooks++
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to import data: "+err.Error())
 		return
 	}
 
@@ -379,3 +344,4 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
+

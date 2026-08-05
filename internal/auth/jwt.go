@@ -2,18 +2,32 @@ package auth
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
-// JWTAuthProvider implements AuthProvider using SQL database and JWT tokens.
+// UserModel represents the users table structure for GORM.
+type UserModel struct {
+	ID           int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	Username     string    `gorm:"uniqueIndex;not null;column:username"`
+	Email        string    `gorm:"uniqueIndex;not null;column:email"`
+	PasswordHash string    `gorm:"column:password_hash;not null"`
+	CreatedAt    time.Time `gorm:"column:created_at"`
+}
+
+func (UserModel) TableName() string {
+	return "users"
+}
+
+// JWTAuthProvider implements AuthProvider using GORM database and JWT tokens.
 type JWTAuthProvider struct {
-	db        *sql.DB
+	db        *gorm.DB
 	jwtSecret []byte
 	tokenTTL  time.Duration
 }
@@ -27,7 +41,7 @@ type Claims struct {
 }
 
 // NewJWTAuthProvider initializes a new JWTAuthProvider.
-func NewJWTAuthProvider(db *sql.DB, jwtSecret string) *JWTAuthProvider {
+func NewJWTAuthProvider(db *gorm.DB, jwtSecret string) *JWTAuthProvider {
 	return &JWTAuthProvider{
 		db:        db,
 		jwtSecret: []byte(jwtSecret),
@@ -49,25 +63,25 @@ func (p *JWTAuthProvider) RegisterUser(ctx context.Context, username, email, pas
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	query := `INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`
-	res, err := p.db.ExecContext(ctx, query, username, email, string(hash))
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+	userRecord := UserModel{
+		Username:     username,
+		Email:        email,
+		PasswordHash: string(hash),
+		CreatedAt:    time.Now(),
+	}
+
+	if err := p.db.WithContext(ctx).Create(&userRecord).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
 			return nil, ErrUserExists
 		}
 		return nil, fmt.Errorf("failed to insert user: %w", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user id: %w", err)
-	}
-
 	return &User{
-		ID:        id,
-		Username:  username,
-		Email:     email,
-		CreatedAt: time.Now(),
+		ID:        userRecord.ID,
+		Username:  userRecord.Username,
+		Email:     userRecord.Email,
+		CreatedAt: userRecord.CreatedAt,
 	}, nil
 }
 
@@ -75,27 +89,31 @@ func (p *JWTAuthProvider) RegisterUser(ctx context.Context, username, email, pas
 func (p *JWTAuthProvider) AuthenticateUser(ctx context.Context, usernameOrEmail, password string) (string, *User, error) {
 	usernameOrEmail = strings.TrimSpace(usernameOrEmail)
 
-	var u User
-	var passwordHash string
-
-	query := `SELECT id, username, email, password_hash, created_at FROM users WHERE username = ? OR LOWER(email) = LOWER(?)`
-	err := p.db.QueryRowContext(ctx, query, usernameOrEmail, usernameOrEmail).Scan(&u.ID, &u.Username, &u.Email, &passwordHash, &u.CreatedAt)
-	if err == sql.ErrNoRows {
+	var u UserModel
+	err := p.db.WithContext(ctx).Where("username = ? OR LOWER(email) = LOWER(?)", usernameOrEmail, usernameOrEmail).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil, ErrInvalidCreds
 	} else if err != nil {
 		return "", nil, fmt.Errorf("database query error: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 		return "", nil, ErrInvalidCreds
 	}
 
-	tokenStr, err := p.generateToken(&u)
+	user := &User{
+		ID:        u.ID,
+		Username:  u.Username,
+		Email:     u.Email,
+		CreatedAt: u.CreatedAt,
+	}
+
+	tokenStr, err := p.generateToken(user)
 	if err != nil {
 		return "", nil, err
 	}
 
-	return tokenStr, &u, nil
+	return tokenStr, user, nil
 }
 
 // VerifyToken validates a JWT token and extracts User details.
@@ -132,24 +150,31 @@ func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID int64, username
 		return nil, fmt.Errorf("username and email cannot be empty")
 	}
 
-	query := `UPDATE users SET username = ?, email = ? WHERE id = ?`
-	_, err := p.db.ExecContext(ctx, query, username, email, userID)
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+	res := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"username": username,
+		"email":    email,
+	})
+	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrDuplicatedKey) || strings.Contains(res.Error.Error(), "UNIQUE") || strings.Contains(res.Error.Error(), "unique") || strings.Contains(res.Error.Error(), "duplicate") {
 			return nil, ErrUserExists
 		}
-		return nil, fmt.Errorf("failed to update user: %w", err)
+		return nil, fmt.Errorf("failed to update user: %w", res.Error)
 	}
 
-	var u User
-	err = p.db.QueryRowContext(ctx, `SELECT id, username, email, created_at FROM users WHERE id = ?`, userID).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, ErrUserNotFound
-	} else if err != nil {
+	var u UserModel
+	if err := p.db.WithContext(ctx).First(&u, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
 		return nil, fmt.Errorf("failed to query updated user: %w", err)
 	}
 
-	return &u, nil
+	return &User{
+		ID:        u.ID,
+		Username:  u.Username,
+		Email:     u.Email,
+		CreatedAt: u.CreatedAt,
+	}, nil
 }
 
 // ChangePassword changes the user password after validating the old password.
@@ -161,15 +186,15 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldP
 		return ErrSamePassword
 	}
 
-	var passwordHash string
-	err := p.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&passwordHash)
-	if err == sql.ErrNoRows {
+	var u UserModel
+	err := p.db.WithContext(ctx).Select("id", "password_hash").Where("id = ?", userID).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrUserNotFound
 	} else if err != nil {
 		return fmt.Errorf("database query error: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(oldPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(oldPassword)); err != nil {
 		return ErrInvalidCreds
 	}
 
@@ -178,8 +203,7 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldP
 		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
-	_, err = p.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, string(newHash), userID)
-	if err != nil {
+	if err := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", userID).Update("password_hash", string(newHash)).Error; err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -188,29 +212,26 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldP
 
 // DeleteUser deletes the user and all associated data.
 func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID int64) error {
-	tx, err := p.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
+	err := p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		tx.Exec("DELETE FROM movies WHERE user_id = ?", userID)
+		tx.Exec("DELETE FROM tv_shows WHERE user_id = ?", userID)
+		tx.Exec("DELETE FROM books WHERE user_id = ?", userID)
 
-	// Clean up user items across all tables
-	_, _ = tx.ExecContext(ctx, `DELETE FROM movies WHERE user_id = ?`, userID)
-	_, _ = tx.ExecContext(ctx, `DELETE FROM tv_shows WHERE user_id = ?`, userID)
-	_, _ = tx.ExecContext(ctx, `DELETE FROM books WHERE user_id = ?`, userID)
+		res := tx.Where("id = ?", userID).Delete(&UserModel{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrUserNotFound
+		}
+		return nil
+	})
 
-	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, userID)
 	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return ErrUserNotFound
+		}
 		return fmt.Errorf("failed to delete user: %w", err)
-	}
-
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		return ErrUserNotFound
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit user deletion: %w", err)
 	}
 
 	return nil
@@ -237,3 +258,4 @@ func (p *JWTAuthProvider) generateToken(user *User) (string, error) {
 
 	return tokenStr, nil
 }
+

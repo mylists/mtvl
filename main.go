@@ -27,7 +27,7 @@ import (
 
 // Embed goose SQL migrations
 //
-//go:embed migrations/*.sql migrations/*/*.sql
+//go:embed migrations/*/*.sql
 var migrationFS embed.FS
 
 func corsMiddleware(allowedOrigins string) func(http.Handler) http.Handler {
@@ -65,7 +65,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Fatal: failed to connect to database: %v", err)
 	}
-	defer database.Close()
+	if sqlDB, err := database.DB(); err == nil {
+		defer sqlDB.Close()
+	}
 
 	if err := db.RunMigrations(database, cfg.DBDriver, migrationFS, "migrations"); err != nil {
 		log.Fatalf("Fatal: database migration failed: %v", err)

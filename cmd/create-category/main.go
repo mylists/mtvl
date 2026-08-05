@@ -229,14 +229,18 @@ import "time"
 
 // {{STRUCT}} represents a tracking entry for {{NAME}}.
 type {{STRUCT}} struct {
-	ID        int64     ` + "`json:\"id\"`" + `
-	UserID    int64     ` + "`json:\"user_id\"`" + `
-	Title     string    ` + "`json:\"title\"`" + `
-	Status    string    ` + "`json:\"status\"`" + `
-	Rating    int       ` + "`json:\"rating\"`" + `
-	Notes     string    ` + "`json:\"notes\"`" + `
-	CreatedAt time.Time ` + "`json:\"created_at\"`" + `
-	UpdatedAt time.Time ` + "`json:\"updated_at\"`" + `
+	ID        int64     ` + "`json:\"id\" gorm:\"primaryKey;autoIncrement;column:id\"`" + `
+	UserID    int64     ` + "`json:\"user_id\" gorm:\"index;column:user_id;not null\"`" + `
+	Title     string    ` + "`json:\"title\" gorm:\"column:title;not null\"`" + `
+	Status    string    ` + "`json:\"status\" gorm:\"column:status;not null;default:'plan_to_watch'\"`" + `
+	Rating    int       ` + "`json:\"rating\" gorm:\"column:rating;default:0\"`" + `
+	Notes     string    ` + "`json:\"notes\" gorm:\"column:notes\"`" + `
+	CreatedAt time.Time ` + "`json:\"created_at\" gorm:\"column:created_at\"`" + `
+	UpdatedAt time.Time ` + "`json:\"updated_at\" gorm:\"column:updated_at\"`" + `
+}
+
+func ({{STRUCT}}) TableName() string {
+	return "{{NAME}}"
 }
 `
 	r := strings.NewReplacer("{{NAME}}", name, "{{STRUCT}}", structName)
@@ -248,23 +252,24 @@ func generateHandlerGo(name, displayName, description, endpoint string) string {
 	tmpl := `package {{NAME}}
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
 )
 
 type Module struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func NewModule(db *sql.DB) *Module {
+func NewModule(db *gorm.DB) *Module {
 	return &Module{db: db}
 }
 
@@ -305,21 +310,16 @@ func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	whereClauses := []string{"user_id = ?"}
-	args := []interface{}{user.ID}
+	query := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).Where("user_id = ?", user.ID)
 
 	if statusFilter != "" {
-		whereClauses = append(whereClauses, "status = ?")
-		args = append(args, statusFilter)
+		query = query.Where("status = ?", statusFilter)
 	}
 
 	if qParam != "" {
-		whereClauses = append(whereClauses, "(LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)")
 		pattern := "%" + strings.ToLower(qParam) + "%"
-		args = append(args, pattern, pattern)
+		query = query.Where("(LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", pattern, pattern)
 	}
-
-	whereStmt := strings.Join(whereClauses, " AND ")
 
 	validSortColumns := map[string]string{
 		"id":         "id",
@@ -357,38 +357,29 @@ func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var total int
+	var total int64
 	if isPaginated {
-		countQuery := "SELECT COUNT(*) FROM {{NAME}} WHERE " + whereStmt
-		_ = m.db.QueryRowContext(r.Context(), countQuery, args...).Scan(&total)
-	}
-
-	query := "SELECT id, user_id, title, status, rating, notes, created_at, updated_at FROM {{NAME}} WHERE " + whereStmt + " ORDER BY " + sortCol + " " + strings.ToUpper(orderParam)
-
-	if isPaginated {
-		offset := (page - 1) * limit
-		query += " LIMIT " + strconv.Itoa(limit) + " OFFSET " + strconv.Itoa(offset)
-	}
-
-	rows, err := m.db.QueryContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer rows.Close()
-
-	items := make([]{{STRUCT}}, 0)
-	for rows.Next() {
-		var item {{STRUCT}}
-		if err := rows.Scan(&item.ID, &item.UserID, &item.Title, &item.Status, &item.Rating, &item.Notes, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := query.Count(&total).Error; err != nil {
 			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		items = append(items, item)
+	}
+
+	query = query.Order(sortCol + " " + strings.ToUpper(orderParam))
+
+	if isPaginated {
+		offset := (page - 1) * limit
+		query = query.Offset(offset).Limit(limit)
+	}
+
+	items := make([]{{STRUCT}}, 0)
+	if err := query.Find(&items).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	if isPaginated {
-		totalPages := (total + limit - 1) / limit
+		totalPages := (int(total) + limit - 1) / limit
 		if totalPages < 0 {
 			totalPages = 0
 		}
@@ -422,25 +413,15 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
-	args := make([]interface{}, 0, len(req.IDs)+1)
-	args = append(args, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-
-	query := "DELETE FROM {{NAME}} WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&{{STRUCT}}{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "Items deleted successfully",
-		"deleted_count": rowsAffected,
+		"deleted_count": res.RowsAffected,
 	})
 }
 
@@ -460,26 +441,22 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
 	now := time.Now()
-	args := make([]interface{}, 0, len(req.IDs)+3)
-	args = append(args, req.Status, now, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
+	res := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).
+		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Updates(map[string]interface{}{
+			"status":     req.Status,
+			"updated_at": now,
+		})
 
-	query := "UPDATE {{NAME}} SET status = ?, updated_at = ? WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "Items status updated successfully",
-		"updated_count": rowsAffected,
+		"updated_count": res.RowsAffected,
 	})
 }
 
@@ -513,16 +490,7 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := ` + "`INSERT INTO {{NAME}} (user_id, title, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`" + `
-	res, err := m.db.ExecContext(r.Context(), query, user.ID, req.Title, req.Status, req.Rating, req.Notes, now, now)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	id, _ := res.LastInsertId()
 	item := {{STRUCT}}{
-		ID:        id,
 		UserID:    user.ID,
 		Title:     req.Title,
 		Status:    req.Status,
@@ -530,6 +498,11 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 		Notes:     req.Notes,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+
+	if err := m.db.WithContext(r.Context()).Create(&item).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	respondJSON(w, http.StatusCreated, item)
@@ -550,9 +523,8 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item {{STRUCT}}
-	query := ` + "`SELECT id, user_id, title, status, rating, notes, created_at, updated_at FROM {{NAME}} WHERE id = ? AND user_id = ?`" + `
-	err = m.db.QueryRowContext(r.Context(), query, id, user.ID).Scan(&item.ID, &item.UserID, &item.Title, &item.Status, &item.Rating, &item.Notes, &item.CreatedAt, &item.UpdatedAt)
-	if err == sql.ErrNoRows {
+	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
 	} else if err != nil {
@@ -590,15 +562,22 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := ` + "`UPDATE {{NAME}} SET title = ?, status = ?, rating = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`" + `
-	res, err := m.db.ExecContext(r.Context(), query, req.Title, req.Status, req.Rating, req.Notes, now, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	res := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).
+		Where("id = ? AND user_id = ?", id, user.ID).
+		Updates(map[string]interface{}{
+			"title":      req.Title,
+			"status":     req.Status,
+			"rating":     req.Rating,
+			"notes":      req.Notes,
+			"updated_at": now,
+		})
+
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
 	}
@@ -620,15 +599,13 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := ` + "`DELETE FROM {{NAME}} WHERE id = ? AND user_id = ?`" + `
-	res, err := m.db.ExecContext(r.Context(), query, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&{{STRUCT}}{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
 	}
@@ -662,32 +639,25 @@ func generateHandlerTestGo(name, endpoint string) string {
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"mtvl/internal/auth"
 )
 
-func setupTestDB(t *testing.T) (*sql.DB, *auth.User) {
-	db, err := sql.Open("sqlite", ":memory:")
+func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
-	schemas := []string{
-		` + "`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(100) NOT NULL, email VARCHAR(255) NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`" + `,
-		` + "`CREATE TABLE {{NAME}} (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, title VARCHAR(255) NOT NULL, status VARCHAR(50) DEFAULT 'plan_to_watch', rating INTEGER DEFAULT 0, notes TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`" + `,
-	}
-
-	for _, s := range schemas {
-		if _, err := db.Exec(s); err != nil {
-			t.Fatalf("failed to create table: %v", err)
-		}
+	if err := db.AutoMigrate(&auth.UserModel{}, &{{STRUCT}}{}); err != nil {
+		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
 	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
@@ -696,7 +666,6 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.User) {
 
 func TestModuleCRUD(t *testing.T) {
 	db, user := setupTestDB(t)
-	defer db.Close()
 
 	mod := NewModule(db)
 	router := chi.NewRouter()
@@ -746,3 +715,4 @@ func TestModuleCRUD(t *testing.T) {
 	)
 	return r.Replace(tmpl)
 }
+

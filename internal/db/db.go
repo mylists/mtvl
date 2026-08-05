@@ -1,42 +1,53 @@
 package db
 
 import (
-	"database/sql"
 	"embed"
 	"fmt"
 	"log"
 	"strings"
 
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// OpenDB opens a database connection given driver and dsn.
-func OpenDB(driver, dsn string) (*sql.DB, error) {
-	sqlDriver := driver
+// OpenDB opens a database connection with GORM given driver and dsn.
+func OpenDB(driver, dsn string) (*gorm.DB, error) {
+	var dialector gorm.Dialector
+
 	if driver == "postgres" || driver == "postgresql" {
-		sqlDriver = "postgres"
+		dialector = postgres.Open(dsn)
 	} else if driver == "mysql" {
-		sqlDriver = "mysql"
+		dialector = mysql.Open(dsn)
 	} else {
 		return nil, fmt.Errorf("unsupported database driver (%s): supported drivers are 'postgres', 'mysql'", driver)
 	}
 
-	database, err := sql.Open(sqlDriver, dsn)
+	gormDB, err := gorm.Open(dialector, &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database (%s): %w", driver, err)
 	}
 
-	if err := database.Ping(); err != nil {
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database (%s): %w", driver, err)
 	}
 
-	return database, nil
+	return gormDB, nil
 }
 
 // RunMigrations runs goose migrations from embed.FS or directory for the specified dialect.
-func RunMigrations(database *sql.DB, driver string, migrationFS embed.FS, dir string) error {
+func RunMigrations(gormDB *gorm.DB, driver string, migrationFS embed.FS, dir string) error {
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB for migrations: %w", err)
+	}
+
 	dialect := driver
 	if driver == "postgres" || driver == "postgresql" {
 		dialect = "postgres"
@@ -65,7 +76,7 @@ func RunMigrations(database *sql.DB, driver string, migrationFS embed.FS, dir st
 	}
 
 	log.Printf("[DB] Running migrations with dialect: %s (dir: %s)", dialect, targetDir)
-	if err := goose.Up(database, targetDir); err != nil {
+	if err := goose.Up(sqlDB, targetDir); err != nil {
 		return fmt.Errorf("failed to run goose up migrations: %w", err)
 	}
 
@@ -89,4 +100,5 @@ func Rebind(driver, query string) string {
 	}
 	return b.String()
 }
+
 

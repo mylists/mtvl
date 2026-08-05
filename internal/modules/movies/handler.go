@@ -1,25 +1,26 @@
 package movies
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
 )
 
 // Module implements core.CategoryModule for Movies.
 type Module struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewModule initializes a new Movies CategoryModule.
-func NewModule(db *sql.DB) *Module {
+func NewModule(db *gorm.DB) *Module {
 	return &Module{db: db}
 }
 
@@ -60,23 +61,17 @@ func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	whereClauses := []string{"user_id = ?"}
-	args := []interface{}{user.ID}
+	query := m.db.WithContext(r.Context()).Model(&Movie{}).Where("user_id = ?", user.ID)
 
 	if statusFilter != "" {
-		whereClauses = append(whereClauses, "status = ?")
-		args = append(args, statusFilter)
+		query = query.Where("status = ?", statusFilter)
 	}
 
 	if qParam != "" {
-		whereClauses = append(whereClauses, "(LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?)")
 		pattern := "%" + strings.ToLower(qParam) + "%"
-		args = append(args, pattern, pattern, pattern)
+		query = query.Where("(LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?)", pattern, pattern, pattern)
 	}
 
-	whereStmt := strings.Join(whereClauses, " AND ")
-
-	// Validate sorting column
 	validSortColumns := map[string]string{
 		"id":           "id",
 		"title":        "title",
@@ -115,38 +110,29 @@ func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var total int
+	var total int64
 	if isPaginated {
-		countQuery := "SELECT COUNT(*) FROM movies WHERE " + whereStmt
-		_ = m.db.QueryRowContext(r.Context(), countQuery, args...).Scan(&total)
+		if err := query.Count(&total).Error; err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to count movies: "+err.Error())
+			return
+		}
 	}
 
-	query := "SELECT id, user_id, title, release_year, director, status, rating, notes, created_at, updated_at FROM movies WHERE " + whereStmt + " ORDER BY " + sortCol + " " + strings.ToUpper(orderParam)
+	query = query.Order(sortCol + " " + strings.ToUpper(orderParam))
 
 	if isPaginated {
 		offset := (page - 1) * limit
-		query += " LIMIT " + strconv.Itoa(limit) + " OFFSET " + strconv.Itoa(offset)
+		query = query.Offset(offset).Limit(limit)
 	}
 
-	rows, err := m.db.QueryContext(r.Context(), query, args...)
-	if err != nil {
+	movies := make([]Movie, 0)
+	if err := query.Find(&movies).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch movies: "+err.Error())
 		return
 	}
-	defer rows.Close()
-
-	movies := make([]Movie, 0)
-	for rows.Next() {
-		var mov Movie
-		if err := rows.Scan(&mov.ID, &mov.UserID, &mov.Title, &mov.ReleaseYear, &mov.Director, &mov.Status, &mov.Rating, &mov.Notes, &mov.CreatedAt, &mov.UpdatedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to scan movie: "+err.Error())
-			return
-		}
-		movies = append(movies, mov)
-	}
 
 	if isPaginated {
-		totalPages := (total + limit - 1) / limit
+		totalPages := (int(total) + limit - 1) / limit
 		if totalPages < 0 {
 			totalPages = 0
 		}
@@ -180,25 +166,15 @@ func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
-	args := make([]interface{}, 0, len(req.IDs)+1)
-	args = append(args, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-
-	query := "DELETE FROM movies WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to bulk delete movies: "+err.Error())
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&Movie{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to bulk delete movies: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "Movies deleted successfully",
-		"deleted_count": rowsAffected,
+		"deleted_count": res.RowsAffected,
 	})
 }
 
@@ -218,26 +194,22 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.IDs))
 	now := time.Now()
-	args := make([]interface{}, 0, len(req.IDs)+3)
-	args = append(args, req.Status, now, user.ID)
-	for i, id := range req.IDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
+	res := m.db.WithContext(r.Context()).Model(&Movie{}).
+		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Updates(map[string]interface{}{
+			"status":     req.Status,
+			"updated_at": now,
+		})
 
-	query := "UPDATE movies SET status = ?, updated_at = ? WHERE user_id = ? AND id IN (" + strings.Join(placeholders, ",") + ")"
-	res, err := m.db.ExecContext(r.Context(), query, args...)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to bulk update status: "+err.Error())
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to bulk update status: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":       "Movies status updated successfully",
-		"updated_count": rowsAffected,
+		"updated_count": res.RowsAffected,
 	})
 }
 
@@ -273,16 +245,7 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := `INSERT INTO movies (user_id, title, release_year, director, status, rating, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	res, err := m.db.ExecContext(r.Context(), query, user.ID, req.Title, req.ReleaseYear, req.Director, req.Status, req.Rating, req.Notes, now, now)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to insert movie: "+err.Error())
-		return
-	}
-
-	id, _ := res.LastInsertId()
 	movie := Movie{
-		ID:          id,
 		UserID:      user.ID,
 		Title:       req.Title,
 		ReleaseYear: req.ReleaseYear,
@@ -292,6 +255,11 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 		Notes:       req.Notes,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+	}
+
+	if err := m.db.WithContext(r.Context()).Create(&movie).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to insert movie: "+err.Error())
+		return
 	}
 
 	respondJSON(w, http.StatusCreated, movie)
@@ -312,9 +280,8 @@ func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mov Movie
-	query := `SELECT id, user_id, title, release_year, director, status, rating, notes, created_at, updated_at FROM movies WHERE id = ? AND user_id = ?`
-	err = m.db.QueryRowContext(r.Context(), query, id, user.ID).Scan(&mov.ID, &mov.UserID, &mov.Title, &mov.ReleaseYear, &mov.Director, &mov.Status, &mov.Rating, &mov.Notes, &mov.CreatedAt, &mov.UpdatedAt)
-	if err == sql.ErrNoRows {
+	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&mov).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
 	} else if err != nil {
@@ -354,15 +321,24 @@ func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	query := `UPDATE movies SET title = ?, release_year = ?, director = ?, status = ?, rating = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`
-	res, err := m.db.ExecContext(r.Context(), query, req.Title, req.ReleaseYear, req.Director, req.Status, req.Rating, req.Notes, now, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to update movie: "+err.Error())
+	res := m.db.WithContext(r.Context()).Model(&Movie{}).
+		Where("id = ? AND user_id = ?", id, user.ID).
+		Updates(map[string]interface{}{
+			"title":        req.Title,
+			"release_year": req.ReleaseYear,
+			"director":     req.Director,
+			"status":       req.Status,
+			"rating":       req.Rating,
+			"notes":        req.Notes,
+			"updated_at":   now,
+		})
+
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update movie: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
 	}
@@ -384,15 +360,13 @@ func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `DELETE FROM movies WHERE id = ? AND user_id = ?`
-	res, err := m.db.ExecContext(r.Context(), query, id, user.ID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to delete movie: "+err.Error())
+	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&Movie{})
+	if res.Error != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to delete movie: "+res.Error.Error())
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
 	}
@@ -409,3 +383,4 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
+

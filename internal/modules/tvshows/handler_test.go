@@ -6,21 +6,30 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"mtvl/internal/auth"
 )
 
-func TestTVShowsModuleCRUD(t *testing.T) {
-	db, mock, err := sqlmock.New()
+func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("failed to create sqlmock: %v", err)
+		t.Fatalf("failed to open in-memory db: %v", err)
 	}
-	defer db.Close()
+
+	if err := db.AutoMigrate(&auth.UserModel{}, &TVShow{}); err != nil {
+		t.Fatalf("failed to migrate tables: %v", err)
+	}
 
 	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
+	return db, user
+}
+
+func TestTVShowsModuleCRUD(t *testing.T) {
+	db, user := setupTestDB(t)
+
 	mod := NewModule(db)
 	router := chi.NewRouter()
 
@@ -34,10 +43,6 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 	mod.RegisterRoutes(router, authMw)
 
 	// 1. Create TV Show
-	mock.ExpectExec("INSERT INTO tv_shows").
-		WithArgs(int64(1), "Breaking Bad", 5, 16, 62, "completed", 10, "Goat show", sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
 	body := []byte(`{"title":"Breaking Bad","current_season":5,"current_episode":16,"total_episodes":62,"status":"completed","rating":10,"notes":"Goat show"}`)
 	req := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -49,14 +54,6 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 	}
 
 	// 2. List TV Shows
-	now := time.Now()
-	rows := sqlmock.NewRows([]string{"id", "user_id", "title", "current_season", "current_episode", "total_episodes", "status", "rating", "notes", "created_at", "updated_at"}).
-		AddRow(1, 1, "Breaking Bad", 5, 16, 62, "completed", 10, "Goat show", now, now)
-
-	mock.ExpectQuery("SELECT id, user_id, title, current_season, current_episode, total_episodes, status, rating, notes, created_at, updated_at FROM tv_shows").
-		WithArgs(int64(1)).
-		WillReturnRows(rows)
-
 	req = httptest.NewRequest("GET", "/api/v1/tvshows", nil)
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -73,3 +70,4 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 		t.Errorf("unexpected list: %+v", list)
 	}
 }
+
