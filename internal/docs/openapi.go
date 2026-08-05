@@ -22,8 +22,8 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	spec := map[string]interface{}{
 		"openapi": "3.0.3",
 		"info": map[string]interface{}{
-			"title":       "mtvl API",
-			"description": "Comprehensive RESTful API for Media Tracking Vector List backend",
+			"title":       "API",
+			"description": "Comprehensive RESTful API for backend",
 			"version":     "1.0.0",
 		},
 		"servers": []map[string]interface{}{
@@ -303,7 +303,7 @@ func (d *DocsHandler) GetDocsUI(w http.ResponseWriter, r *http.Request) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>mtvl API Documentation</title>
+  <title>API Documentation</title>
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
   <style>
     html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }

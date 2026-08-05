@@ -2,42 +2,25 @@ package books
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-chi/chi/v5"
-	_ "modernc.org/sqlite"
 	"mtvl/internal/auth"
 )
 
-func setupTestDB(t *testing.T) (*sql.DB, *auth.User) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open in-memory db: %v", err)
-	}
-
-	schemas := []string{
-		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(100) NOT NULL, email VARCHAR(255) NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE books (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, title VARCHAR(255) NOT NULL, status VARCHAR(50) DEFAULT 'plan_to_watch', rating INTEGER DEFAULT 0, notes TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`,
-	}
-
-	for _, s := range schemas {
-		if _, err := db.Exec(s); err != nil {
-			t.Fatalf("failed to create table: %v", err)
-		}
-	}
-
-	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
-	return db, user
-}
-
 func TestModuleCRUD(t *testing.T) {
-	db, user := setupTestDB(t)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
 	defer db.Close()
 
+	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
 	mod := NewModule(db)
 	router := chi.NewRouter()
 
@@ -51,6 +34,10 @@ func TestModuleCRUD(t *testing.T) {
 	mod.RegisterRoutes(router, authMw)
 
 	// 1. Create
+	mock.ExpectExec("INSERT INTO books").
+		WithArgs(int64(1), "Sample Item", "completed", 9, "", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
 	body := []byte(`{"title":"Sample Item","status":"completed","rating":9}`)
 	req := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -70,6 +57,14 @@ func TestModuleCRUD(t *testing.T) {
 	}
 
 	// 2. List
+	now := time.Now()
+	rows := sqlmock.NewRows([]string{"id", "user_id", "title", "status", "rating", "notes", "created_at", "updated_at"}).
+		AddRow(1, 1, "Sample Item", "completed", 9, "", now, now)
+
+	mock.ExpectQuery("SELECT id, user_id, title, status, rating, notes, created_at, updated_at FROM books").
+		WithArgs(int64(1)).
+		WillReturnRows(rows)
+
 	req = httptest.NewRequest("GET", "/api/v1/books", nil)
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

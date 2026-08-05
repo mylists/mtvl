@@ -27,7 +27,7 @@ import (
 
 // Embed goose SQL migrations
 //
-//go:embed migrations/*.sql
+//go:embed migrations/*.sql migrations/*/*.sql
 var migrationFS embed.FS
 
 func corsMiddleware(allowedOrigins string) func(http.Handler) http.Handler {
@@ -58,7 +58,7 @@ func corsMiddleware(allowedOrigins string) func(http.Handler) http.Handler {
 
 func main() {
 	cfg := config.LoadConfig()
-	log.Printf("[Init] Starting mtvl backend server on port %s", cfg.ServerPort)
+	log.Printf("[Init] Starting backend server on port %s", cfg.ServerPort)
 	log.Printf("[Init] Database driver: %s, DSN: %s", cfg.DBDriver, cfg.DBDSN)
 
 	database, err := db.OpenDB(cfg.DBDriver, cfg.DBDSN)

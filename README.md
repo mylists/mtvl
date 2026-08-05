@@ -1,13 +1,13 @@
-# mtvl (Media Tracking Vector List)
+# mtvl
 
-`mtvl` is a modular, high-performance tracking backend built in Go. It allows developers to create custom tracking categories (such as Movies, TV Shows, Books, Video Games, Anime, etc.) through a pluggable module system and Goose SQL database migrations.
+`mtvl` is a modular, high-performance tracking backend built in Go. It allows developers to create custom tracking categories (such as movies, tv shows, books, video games, anime, etc.) through a pluggable module system and Goose SQL database migrations.
 
 ---
 
 ## Key Features
 
-- **Extensible Category Modules**: Each category (e.g., Movies, TV Shows) is an isolated Go module implementing `core.CategoryModule`.
-- **Multi-Database Support**: Driven by Goose migrations, supporting **PostgreSQL**, **MySQL**, and **SQLite** (out-of-the-box).
+- **Extensible Category Modules**: Each category (e.g., movies, tv shows, books) is an isolated Go module implementing `core.CategoryModule`.
+- **Multi-Database Support**: Driven by Goose migrations, supporting **PostgreSQL** and **MySQL**.
 - **Pluggable Auth Subsystem**: Clean `auth.AuthProvider` interface with built-in JWT authentication + standard adapter for external providers (Auth0, Clerk, Supabase, Keycloak, or custom OIDC).
 - **Dynamic Category Discovery**: Central registry automatically exposes active modules via GET `/api/v1/categories`.
 
@@ -30,9 +30,6 @@ go run main.go
 
 # Custom PostgreSQL DSN
 DB_DRIVER=postgres DB_DSN="postgres://user:pass@localhost:5432/mtvl?sslmode=disable" go run main.go
-
-# SQLite
-DB_DRIVER=sqlite3 DB_DSN=mtvl.db go run main.go
 
 # MySQL
 DB_DRIVER=mysql DB_DSN="user:pass@tcp(localhost:3306)/mtvl?parseTime=true" go run main.go

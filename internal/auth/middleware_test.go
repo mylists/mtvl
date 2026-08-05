@@ -7,18 +7,10 @@ import (
 )
 
 func TestAuthMiddleware(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
-
-	provider := NewJWTAuthProvider(db, "secret-key")
-	_, err := provider.RegisterUser(t.Context(), "alice", "alice@example.com", "secret")
+	provider := NewJWTAuthProvider(nil, "secret-key")
+	token, err := provider.generateToken(&User{ID: 1, Username: "alice", Email: "alice@example.com"})
 	if err != nil {
-		t.Fatalf("failed to register user: %v", err)
-	}
-
-	token, _, err := provider.AuthenticateUser(t.Context(), "alice", "secret")
-	if err != nil {
-		t.Fatalf("failed to authenticate: %v", err)
+		t.Fatalf("failed to generate token: %v", err)
 	}
 
 	// Protected handler checking context user

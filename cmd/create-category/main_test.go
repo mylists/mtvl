@@ -28,7 +28,7 @@ func TestCategoryGenerator(t *testing.T) {
 		t.Errorf("expected VideoGame, got %s", structName)
 	}
 
-	migSQL := generateMigrationSQL(name)
+	migSQL := generateMigrationSQL(name, "sqlite")
 	if !filepath.IsAbs(migrationsDir) {
 		t.Errorf("expected valid migration SQL output")
 	}

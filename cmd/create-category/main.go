@@ -58,14 +58,22 @@ func main() {
 	// 1. Generate Goose Migration
 	nextSeq := getNextMigrationSeq(migrationsDir)
 	migrationFilename := fmt.Sprintf("%05d_%s.sql", nextSeq, name)
-	migrationPath := filepath.Join(migrationsDir, migrationFilename)
 
-	migrationContent := generateMigrationSQL(name)
-	if err := writeFile(migrationPath, migrationContent); err != nil {
-		fmt.Printf("Error creating migration file: %v\n", err)
-		os.Exit(1)
+	dialects := map[string]string{
+		"postgres": generateMigrationSQL(name, "postgres"),
+		"mysql":    generateMigrationSQL(name, "mysql"),
 	}
-	fmt.Printf(" Created Migration: migrations/%s\n", migrationFilename)
+
+	for dialect, content := range dialects {
+		dDir := filepath.Join(migrationsDir, dialect)
+		_ = os.MkdirAll(dDir, 0755)
+		if err := writeFile(filepath.Join(dDir, migrationFilename), content); err != nil {
+			fmt.Printf("Error creating %s migration file: %v\n", dialect, err)
+			os.Exit(1)
+		}
+	}
+	_ = writeFile(filepath.Join(migrationsDir, migrationFilename), dialects["postgres"])
+	fmt.Printf(" Created Migrations: migrations/%s (postgres, mysql)\n", migrationFilename)
 
 	// 2. Create Module Directory
 	targetModuleDir := filepath.Join(modulesDir, name)
@@ -172,16 +180,28 @@ func getStructName(name string) string {
 	return structName
 }
 
-func generateMigrationSQL(name string) string {
+func generateMigrationSQL(name, dialect string) string {
+	var primaryKey string
+	var notesType string
+
+	switch dialect {
+	case "mysql":
+		primaryKey = "INT AUTO_INCREMENT PRIMARY KEY"
+		notesType = "TEXT"
+	default: // postgres
+		primaryKey = "SERIAL PRIMARY KEY"
+		notesType = "TEXT DEFAULT ''"
+	}
+
 	tmpl := `-- +goose Up
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS {{NAME}} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id {{PRIMARY_KEY}},
     user_id INTEGER NOT NULL,
     title VARCHAR(255) NOT NULL,
     status VARCHAR(50) DEFAULT 'plan_to_watch',
     rating INTEGER DEFAULT 0,
-    notes TEXT DEFAULT '',
+    notes {{NOTES_TYPE}},
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -193,7 +213,12 @@ CREATE TABLE IF NOT EXISTS {{NAME}} (
 DROP TABLE IF EXISTS {{NAME}};
 -- +goose StatementEnd
 `
-	return strings.ReplaceAll(tmpl, "{{NAME}}", name)
+	r := strings.NewReplacer(
+		"{{NAME}}", name,
+		"{{PRIMARY_KEY}}", primaryKey,
+		"{{NOTES_TYPE}}", notesType,
+	)
+	return r.Replace(tmpl)
 }
 
 func generateModelGo(name string) string {
