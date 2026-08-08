@@ -32,4 +32,5 @@ upload:
 		--push \
 		--platform linux/amd64,linux/arm64 \
 		--tag $(REGISTRY)/$(IMAGE):$(VERSION) \
-		--tag $(REGISTRY)/$(IMAGE):latest .
+		--tag $(REGISTRY)/$(IMAGE):latest \
+		--target deploy .
