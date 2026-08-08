@@ -1,7 +1,7 @@
 GO := go
 DOCKER := docker
 
-REGISTRY := faww/waf
+REGISTRY := mylists
 
 IMAGE = $(file < TAG)
 VERSION = $(file < VERSION)
@@ -31,5 +31,5 @@ upload:
 	$(DOCKER) buildx build \
 		--push \
 		--platform linux/amd64,linux/arm64 \
-		--tag $(REGISTRY):$(IMAGE)-$(VERSION) \
-		--tag $(REGISTRY):$(IMAGE)-latest .
+		--tag $(REGISTRY)/$(IMAGE):$(VERSION) \
+		--tag $(REGISTRY)/$(IMAGE):latest .
