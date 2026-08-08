@@ -1,7 +1,7 @@
 FROM alpine:latest AS build
 
 RUN apk update && \
-  apk install go
+  apk add go
 
 COPY . /
 
