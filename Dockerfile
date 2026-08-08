@@ -1,7 +1,4 @@
-FROM alpine:latest AS build
-
-RUN apk update && \
-  apk add go
+FROM golang:alpine AS build
 
 COPY / /app
 
