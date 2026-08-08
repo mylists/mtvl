@@ -3,7 +3,7 @@ FROM alpine:latest AS build
 RUN apk update && \
   apk add go
 
-COPY . /
+COPY / /app
 
 RUN go build -o /out .
 
