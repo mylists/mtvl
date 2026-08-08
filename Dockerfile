@@ -5,7 +5,7 @@ RUN apk update && \
 
 COPY / /app
 
-RUN go build -o /out .
+RUN go build -o /out /app
 
 #################################################################
 
