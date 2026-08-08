@@ -1,17 +1,35 @@
-.PHONY: run test build clean create-category
+GO := go
+DOCKER := docker
+
+REGISTRY := faww/waf
+
+IMAGE = $(file < TAG)
+VERSION = $(file < VERSION)
+TAG = $(IMAGE):$(VERSION)
+
+.PHONY: run test build clean create-cate$(GO)ry
+
+all: upload
 
 run:
-	go run main.go
+	$(GO) run main.$(GO)
 
 test:
-	go test -v ./...
+	$(GO) test -v ./...
 
 build:
-	go build -o bin/mtvl main.go
+	$(GO) build -o bin/mtvl main.$(GO)
 
-create-category:
-	@if [ -z "$(NAME)" ]; then echo "Usage: make create-category NAME=category_name [DISPLAY='Display Name'] [DESC='Description']"; exit 1; fi
-	go run cmd/create-category/main.go -name $(NAME) -display "$(DISPLAY)" -description "$(DESC)"
+create-cate$(GO)ry:
+	@if [ -z "$(NAME)" ]; then echo "Usage: make create-cate$(GO)ry NAME=cate$(GO)ry_name [DISPLAY='Display Name'] [DESC='Description']"; exit 1; fi
+	$(GO) run cmd/create-cate$(GO)ry/main.$(GO) -name $(NAME) -display "$(DISPLAY)" -description "$(DESC)"
 
 clean:
 	rm -rf bin/ mtvl.db
+
+upload:
+	$(DOCKER) buildx build \
+		--push \
+		--platform linux/amd64,linux/arm64 \
+		--tag $(REGISTRY):$(IMAGE)-$(VERSION) \
+		--tag $(REGISTRY):$(IMAGE)-latest .
