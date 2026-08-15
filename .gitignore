@@ -104,3 +104,8 @@ venv.bak/
 .mypy_cache/
 
 /mtvl
+
+# A global "core" ignore (core dumps) also matches internal/core/.
+# Keep this package tracked so CI/Docker builds can see it.
+!internal/core/
+!internal/core/**
