@@ -19,6 +19,7 @@ import (
 	"mtvl/internal/core"
 	"mtvl/internal/db"
 	"mtvl/internal/docs"
+	"mtvl/internal/health"
 	"mtvl/internal/modules/books"
 	"mtvl/internal/modules/movies"
 	"mtvl/internal/modules/tvshows"
@@ -94,11 +95,7 @@ func main() {
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	// Healthcheck endpoint
-	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "up"})
-	})
+	health.NewHandler(database).RegisterRoutes(router)
 
 	// Auth Endpoints
 	router.Route("/api/v1/auth", func(r chi.Router) {

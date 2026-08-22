@@ -42,17 +42,14 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		"paths": map[string]interface{}{
-			"/health": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Health check endpoint",
-					"description": "Returns server operational status",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Server is healthy",
-						},
-					},
-				},
-			},
+			"/health":     healthProbePath("Combined health check including Postgres"),
+			"/healthz":    healthProbePath("Combined health check including Postgres (Kubernetes healthz)"),
+			"/livez":      liveProbePath("Kubernetes liveness probe. Process only; does not check Postgres."),
+			"/readyz":     healthProbePath("Kubernetes readiness probe. Requires Postgres to be reachable."),
+			"/startupz":   healthProbePath("Kubernetes startup probe. Requires Postgres to be reachable."),
+			"/health/live": liveProbePath("Kubernetes liveness probe alias"),
+			"/health/ready": healthProbePath("Kubernetes readiness probe alias"),
+			"/health/startup": healthProbePath("Kubernetes startup probe alias"),
 			"/api/v1/categories": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":     "List registered category modules",
@@ -296,6 +293,31 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(spec)
+}
+
+func healthProbePath(description string) map[string]interface{} {
+	return map[string]interface{}{
+		"get": map[string]interface{}{
+			"summary":     "Health check",
+			"description": description,
+			"responses": map[string]interface{}{
+				"200": map[string]interface{}{"description": "Server and Postgres are healthy"},
+				"503": map[string]interface{}{"description": "Postgres is unreachable"},
+			},
+		},
+	}
+}
+
+func liveProbePath(description string) map[string]interface{} {
+	return map[string]interface{}{
+		"get": map[string]interface{}{
+			"summary":     "Liveness probe",
+			"description": description,
+			"responses": map[string]interface{}{
+				"200": map[string]interface{}{"description": "Process is alive"},
+			},
+		},
+	}
 }
 
 func (d *DocsHandler) GetDocsUI(w http.ResponseWriter, r *http.Request) {

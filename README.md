@@ -121,7 +121,10 @@ That's it! The new category will automatically show up in `/api/v1/categories` a
 
 | Method | Endpoint | Description | Auth Required |
 | --- | --- | --- | --- |
-| `GET` | `/health` | Server health check | No |
+| `GET` | `/health`, `/healthz` | Combined health check (includes Postgres) | No |
+| `GET` | `/livez`, `/health/live` | Kubernetes liveness probe | No |
+| `GET` | `/readyz`, `/health/ready` | Kubernetes readiness probe (includes Postgres) | No |
+| `GET` | `/startupz`, `/health/startup` | Kubernetes startup probe (includes Postgres) | No |
 | `POST` | `/api/v1/auth/register` | Register new user | No |
 | `POST` | `/api/v1/auth/login` | Login user & get JWT token | No |
 | `GET` | `/api/v1/auth/me` | Get current user info | Yes |

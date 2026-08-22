@@ -14,6 +14,7 @@ import (
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
 	"mtvl/internal/docs"
+	"mtvl/internal/health"
 	"mtvl/internal/modules/books"
 	"mtvl/internal/modules/movies"
 	"mtvl/internal/modules/tvshows"
@@ -40,10 +41,7 @@ func TestFullServerIntegrationFlow(t *testing.T) {
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "up"})
-	})
+	health.NewHandler(database).RegisterRoutes(router)
 
 	registry.RegisterAllRoutes(router, auth.Middleware(authProvider))
 	services.NewServiceHandler(database).RegisterRoutes(router, auth.Middleware(authProvider))
