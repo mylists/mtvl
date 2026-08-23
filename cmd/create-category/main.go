@@ -203,8 +203,7 @@ CREATE TABLE IF NOT EXISTS {{NAME}} (
     rating INTEGER DEFAULT 0,
     notes {{NOTES_TYPE}},
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- +goose StatementEnd
 
@@ -297,8 +296,7 @@ func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Han
 }
 
 func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -310,7 +308,7 @@ func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	query := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).Where("user_id = ?", user.ID)
+	query := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{})
 
 	if statusFilter != "" {
 		query = query.Where("status = ?", statusFilter)
@@ -399,8 +397,7 @@ func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -413,7 +410,7 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&{{STRUCT}}{})
+	res := m.db.WithContext(r.Context()).Where("id IN ?", req.IDs).Delete(&{{STRUCT}}{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -426,8 +423,7 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -443,7 +439,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).
-		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Where("id IN ?", req.IDs).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -509,8 +505,7 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -523,7 +518,7 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item {{STRUCT}}
-	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&item).Error
+	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -536,8 +531,7 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -563,7 +557,7 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).
-		Where("id = ? AND user_id = ?", id, user.ID).
+		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"title":      req.Title,
 			"status":     req.Status,
@@ -586,8 +580,7 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -599,7 +592,7 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&{{STRUCT}}{})
+	res := m.db.WithContext(r.Context()).Where("id = ?", id).Delete(&{{STRUCT}}{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return

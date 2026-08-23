@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,12 @@ func TestCategoryGenerator(t *testing.T) {
 	handlerCode := generateHandlerGo(name, "Video Games", "Track video games", "/api/v1/games")
 	if len(handlerCode) == 0 {
 		t.Errorf("expected non-empty handler code")
+	}
+	if strings.Contains(handlerCode, `Where("user_id = ?`) || strings.Contains(handlerCode, "AND user_id = ?") {
+		t.Errorf("generated handler should not scope items to a single user")
+	}
+	if strings.Contains(migSQL, "FOREIGN KEY") {
+		t.Errorf("generated migration should not cascade-delete shared category items")
 	}
 
 	testCode := generateHandlerTestGo(name, "/api/v1/games")

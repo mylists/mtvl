@@ -46,8 +46,7 @@ type StatusCount struct {
 
 // GetStats returns aggregated dashboard statistics across all tracking categories.
 func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -56,11 +55,11 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	// Movies stats
 	var movieStat StatResult
-	_ = s.db.WithContext(ctx).Model(&movies.Movie{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&movieStat)
+	_ = s.db.WithContext(ctx).Model(&movies.Movie{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&movieStat)
 
 	movieStatusBreakdown := make(map[string]int)
 	var movieCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&movies.Movie{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&movieCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&movies.Movie{}).Select("status, COUNT(*) as count").Group("status").Find(&movieCounts).Error; err == nil {
 		for _, c := range movieCounts {
 			movieStatusBreakdown[c.Status] = c.Count
 		}
@@ -68,11 +67,11 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	// TV Shows stats
 	var tvStat StatResult
-	_ = s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&tvStat)
+	_ = s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&tvStat)
 
 	tvStatusBreakdown := make(map[string]int)
 	var tvCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&tvCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Select("status, COUNT(*) as count").Group("status").Find(&tvCounts).Error; err == nil {
 		for _, c := range tvCounts {
 			tvStatusBreakdown[c.Status] = c.Count
 		}
@@ -80,11 +79,11 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	// Books stats
 	var bookStat StatResult
-	_ = s.db.WithContext(ctx).Model(&books.Book{}).Where("user_id = ?", user.ID).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&bookStat)
+	_ = s.db.WithContext(ctx).Model(&books.Book{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&bookStat)
 
 	bookStatusBreakdown := make(map[string]int)
 	var bookCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&books.Book{}).Where("user_id = ?", user.ID).Select("status, COUNT(*) as count").Group("status").Find(&bookCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&books.Book{}).Select("status, COUNT(*) as count").Group("status").Find(&bookCounts).Error; err == nil {
 		for _, c := range bookCounts {
 			bookStatusBreakdown[c.Status] = c.Count
 		}
@@ -116,8 +115,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 // GlobalSearch searches across movies, tv shows, and books for a keyword.
 func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -133,15 +131,15 @@ func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Search movies
 	movieResults := make([]movies.Movie, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern, pattern).Find(&movieResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern, pattern).Find(&movieResults).Error
 
 	// Search tv shows
 	tvResults := make([]tvshows.TVShow, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern).Find(&tvResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern).Find(&tvResults).Error
 
 	// Search books
 	bookResults := make([]books.Book, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ? AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)", user.ID, pattern, pattern).Find(&bookResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern).Find(&bookResults).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"query": queryTerm,
@@ -166,15 +164,15 @@ func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) 
 
 	// Movies
 	movieList := make([]movies.Movie, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&movieList).Error
+	_ = s.db.WithContext(ctx).Order("id ASC").Find(&movieList).Error
 
 	// TV Shows
 	tvList := make([]tvshows.TVShow, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&tvList).Error
+	_ = s.db.WithContext(ctx).Order("id ASC").Find(&tvList).Error
 
 	// Books
 	bookList := make([]books.Book, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("id ASC").Find(&bookList).Error
+	_ = s.db.WithContext(ctx).Order("id ASC").Find(&bookList).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"version":     "1.0",
@@ -235,9 +233,9 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if req.Overwrite {
-			tx.Where("user_id = ?", user.ID).Delete(&movies.Movie{})
-			tx.Where("user_id = ?", user.ID).Delete(&tvshows.TVShow{})
-			tx.Where("user_id = ?", user.ID).Delete(&books.Book{})
+			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&movies.Movie{})
+			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&tvshows.TVShow{})
+			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&books.Book{})
 		}
 
 		now := time.Now()

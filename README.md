@@ -10,6 +10,7 @@
 - **Multi-Database Support**: Driven by Goose migrations, supporting **PostgreSQL** and **MySQL**.
 - **Pluggable Auth Subsystem**: Clean `auth.AuthProvider` interface with built-in JWT authentication + standard adapter for external providers (Auth0, Clerk, Supabase, Keycloak, or custom OIDC).
 - **Dynamic Category Discovery**: Central registry automatically exposes active modules via GET `/api/v1/categories`.
+- **Shared Categories**: Movies, TV shows, books, and any new category are one shared catalog. Every authenticated user sees the same items and the same IDs.
 
 ---
 
@@ -60,7 +61,6 @@ CREATE TABLE IF NOT EXISTS books (
     notes TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 -- +goose StatementEnd
 
@@ -129,12 +129,12 @@ That's it! The new category will automatically show up in `/api/v1/categories` a
 | `POST` | `/api/v1/auth/login` | Login user & get JWT token | No |
 | `GET` | `/api/v1/auth/me` | Get current user info | Yes |
 | `GET` | `/api/v1/categories` | Discover registered tracking modules | No |
-| `GET` | `/api/v1/movies` | List user's movies | Yes |
+| `GET` | `/api/v1/movies` | List movies (shared) | Yes |
 | `POST` | `/api/v1/movies` | Create movie record | Yes |
 | `GET` | `/api/v1/movies/{id}` | Get single movie | Yes |
 | `PUT` | `/api/v1/movies/{id}` | Update movie | Yes |
 | `DELETE` | `/api/v1/movies/{id}` | Delete movie | Yes |
-| `GET` | `/api/v1/tvshows` | List user's TV shows | Yes |
+| `GET` | `/api/v1/tvshows` | List TV shows (shared) | Yes |
 | `POST` | `/api/v1/tvshows` | Create TV show record | Yes |
 | `GET` | `/api/v1/tvshows/{id}` | Get single TV show | Yes |
 | `PUT` | `/api/v1/tvshows/{id}` | Update TV show | Yes |

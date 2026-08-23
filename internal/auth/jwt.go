@@ -210,13 +210,9 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldP
 	return nil
 }
 
-// DeleteUser deletes the user and all associated data.
+// DeleteUser deletes the user account. Shared category items are left in place.
 func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID int64) error {
 	err := p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		tx.Exec("DELETE FROM movies WHERE user_id = ?", userID)
-		tx.Exec("DELETE FROM tv_shows WHERE user_id = ?", userID)
-		tx.Exec("DELETE FROM books WHERE user_id = ?", userID)
-
 		res := tx.Where("id = ?", userID).Delete(&UserModel{})
 		if res.Error != nil {
 			return res.Error

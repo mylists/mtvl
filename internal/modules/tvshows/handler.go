@@ -48,8 +48,7 @@ func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Han
 }
 
 func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -61,7 +60,7 @@ func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	query := m.db.WithContext(r.Context()).Model(&TVShow{}).Where("user_id = ?", user.ID)
+	query := m.db.WithContext(r.Context()).Model(&TVShow{})
 
 	if statusFilter != "" {
 		query = query.Where("status = ?", statusFilter)
@@ -153,8 +152,7 @@ func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -167,7 +165,7 @@ func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&TVShow{})
+	res := m.db.WithContext(r.Context()).Where("id IN ?", req.IDs).Delete(&TVShow{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to bulk delete TV shows: "+res.Error.Error())
 		return
@@ -180,8 +178,7 @@ func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -197,7 +194,7 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&TVShow{}).
-		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Where("id IN ?", req.IDs).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -272,8 +269,7 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -286,7 +282,7 @@ func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var show TVShow
-	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&show).Error
+	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&show).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
@@ -299,8 +295,7 @@ func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -329,7 +324,7 @@ func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&TVShow{}).
-		Where("id = ? AND user_id = ?", id, user.ID).
+		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"title":           req.Title,
 			"current_season":  req.CurrentSeason,
@@ -355,8 +350,7 @@ func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -368,7 +362,7 @@ func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&TVShow{})
+	res := m.db.WithContext(r.Context()).Where("id = ?", id).Delete(&TVShow{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to delete TV show: "+res.Error.Error())
 		return

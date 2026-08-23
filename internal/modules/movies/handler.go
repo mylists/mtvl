@@ -48,8 +48,7 @@ func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Han
 }
 
 func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -61,7 +60,7 @@ func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	query := m.db.WithContext(r.Context()).Model(&Movie{}).Where("user_id = ?", user.ID)
+	query := m.db.WithContext(r.Context()).Model(&Movie{})
 
 	if statusFilter != "" {
 		query = query.Where("status = ?", statusFilter)
@@ -152,8 +151,7 @@ func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -166,7 +164,7 @@ func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND id IN ?", user.ID, req.IDs).Delete(&Movie{})
+	res := m.db.WithContext(r.Context()).Where("id IN ?", req.IDs).Delete(&Movie{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to bulk delete movies: "+res.Error.Error())
 		return
@@ -179,8 +177,7 @@ func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -196,7 +193,7 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&Movie{}).
-		Where("user_id = ? AND id IN ?", user.ID, req.IDs).
+		Where("id IN ?", req.IDs).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -266,8 +263,7 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -280,7 +276,7 @@ func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mov Movie
-	err = m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).First(&mov).Error
+	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&mov).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
@@ -293,8 +289,7 @@ func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -322,7 +317,7 @@ func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&Movie{}).
-		Where("id = ? AND user_id = ?", id, user.ID).
+		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"title":        req.Title,
 			"release_year": req.ReleaseYear,
@@ -347,8 +342,7 @@ func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.GetUserFromContext(r.Context())
-	if !ok {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -360,7 +354,7 @@ func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("id = ? AND user_id = ?", id, user.ID).Delete(&Movie{})
+	res := m.db.WithContext(r.Context()).Where("id = ?", id).Delete(&Movie{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to delete movie: "+res.Error.Error())
 		return

@@ -142,7 +142,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 				"delete": map[string]interface{}{
-					"summary":  "Delete user account and purge all data",
+					"summary":  "Delete user account. Shared category items are kept.",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Account deleted"},
@@ -177,7 +177,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/movies": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List movies with search, status filtering, sorting, and pagination",
+					"summary":  "List shared movies with search, status filtering, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"parameters": []map[string]interface{}{
 						{"name": "q", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Search term"},
@@ -219,7 +219,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/tvshows": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List TV shows with search, filtering, sorting, and pagination",
+					"summary":  "List shared TV shows with search, filtering, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of TV shows"},
@@ -235,7 +235,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/books": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List books with search, filtering, sorting, and pagination",
+					"summary":  "List shared books with search, filtering, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of books"},
@@ -272,16 +272,16 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/export": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "Export full user tracking data as JSON",
+					"summary":  "Export all shared category data as JSON",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
-						"200": map[string]interface{}{"description": "User tracking data backup"},
+						"200": map[string]interface{}{"description": "Shared category data backup"},
 					},
 				},
 			},
 			"/api/v1/import": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary":  "Import tracking data into user account",
+					"summary":  "Import tracking data into the shared catalog",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Data imported successfully"},
