@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
+	"mtvl/internal/idgen"
 )
 
 // Module implements core.CategoryModule for Movies.
@@ -157,7 +158,7 @@ func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs []int64 `json:"ids"`
+		IDs []string `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
 		respondError(w, http.StatusBadRequest, "Invalid request body: ids array required")
@@ -183,8 +184,8 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs    []int64 `json:"ids"`
-		Status string  `json:"status"`
+		IDs    []string `json:"ids"`
+		Status string   `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 || strings.TrimSpace(req.Status) == "" {
 		respondError(w, http.StatusBadRequest, "Invalid request body: ids array and status required")
@@ -268,15 +269,14 @@ func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid movie ID")
 		return
 	}
 
 	var mov Movie
-	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&mov).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&mov).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
@@ -294,9 +294,8 @@ func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid movie ID")
 		return
 	}
@@ -347,9 +346,8 @@ func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid movie ID")
 		return
 	}

@@ -1,10 +1,15 @@
 package movies
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+	"mtvl/internal/idgen"
+)
 
 // Movie represents a movie tracking entry.
 type Movie struct {
-	ID          int64     `json:"id" gorm:"primaryKey;autoIncrement;column:id"`
+	ID          string    `json:"id" gorm:"primaryKey;size:36;column:id"`
 	UserID      int64     `json:"user_id" gorm:"index;column:user_id;not null"`
 	Title       string    `json:"title" gorm:"column:title;not null"`
 	ReleaseYear int       `json:"release_year" gorm:"column:release_year"`
@@ -20,3 +25,9 @@ func (Movie) TableName() string {
 	return "movies"
 }
 
+func (m *Movie) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == "" {
+		m.ID = idgen.New()
+	}
+	return nil
+}

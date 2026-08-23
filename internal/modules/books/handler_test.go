@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -58,7 +57,7 @@ func TestModuleCRUD(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
 		t.Fatalf("failed to unmarshal created item: %v", err)
 	}
-	if created.ID == 0 || created.Title != "Sample Item" {
+	if created.ID == "" || created.Title != "Sample Item" {
 		t.Errorf("unexpected item: %+v", created)
 	}
 
@@ -119,7 +118,7 @@ func TestBooksSharedAcrossUsers(t *testing.T) {
 		t.Fatalf("expected other user to see the same book, got %+v", list)
 	}
 
-	req = httptest.NewRequest("GET", "/api/v1/books/"+strconv.FormatInt(created.ID, 10), nil)
+	req = httptest.NewRequest("GET", "/api/v1/books/"+created.ID, nil)
 	req.Header.Set("X-User", "other")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

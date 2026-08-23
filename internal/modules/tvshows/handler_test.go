@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -119,7 +118,7 @@ func TestTVShowsSharedAcrossUsers(t *testing.T) {
 		t.Fatalf("expected other user to see the same show, got %+v", list)
 	}
 
-	req = httptest.NewRequest("GET", "/api/v1/tvshows/"+strconv.FormatInt(created.ID, 10), nil)
+	req = httptest.NewRequest("GET", "/api/v1/tvshows/"+created.ID, nil)
 	req.Header.Set("X-User", "other")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

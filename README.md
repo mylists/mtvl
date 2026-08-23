@@ -50,7 +50,7 @@ Create `migrations/00004_books.sql`:
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS books (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id CHAR(36) PRIMARY KEY,
     user_id INTEGER NOT NULL,
     title VARCHAR(255) NOT NULL,
     author VARCHAR(255) DEFAULT '',

@@ -1,0 +1,38 @@
+-- +goose Up
+-- +goose StatementBegin
+ALTER TABLE movies ADD COLUMN new_id CHAR(36) NULL;
+UPDATE movies SET new_id = UUID() WHERE new_id IS NULL;
+ALTER TABLE movies MODIFY new_id CHAR(36) NOT NULL;
+ALTER TABLE movies DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id CHAR(36) NOT NULL, ADD PRIMARY KEY (id);
+
+ALTER TABLE tv_shows ADD COLUMN new_id CHAR(36) NULL;
+UPDATE tv_shows SET new_id = UUID() WHERE new_id IS NULL;
+ALTER TABLE tv_shows MODIFY new_id CHAR(36) NOT NULL;
+ALTER TABLE tv_shows DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id CHAR(36) NOT NULL, ADD PRIMARY KEY (id);
+
+ALTER TABLE books ADD COLUMN new_id CHAR(36) NULL;
+UPDATE books SET new_id = UUID() WHERE new_id IS NULL;
+ALTER TABLE books MODIFY new_id CHAR(36) NOT NULL;
+ALTER TABLE books DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id CHAR(36) NOT NULL, ADD PRIMARY KEY (id);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+ALTER TABLE movies ADD COLUMN new_id INT NULL;
+SET @row := 0;
+UPDATE movies SET new_id = (@row := @row + 1);
+ALTER TABLE movies MODIFY new_id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE movies DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
+
+ALTER TABLE tv_shows ADD COLUMN new_id INT NULL;
+SET @row := 0;
+UPDATE tv_shows SET new_id = (@row := @row + 1);
+ALTER TABLE tv_shows MODIFY new_id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE tv_shows DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
+
+ALTER TABLE books ADD COLUMN new_id INT NULL;
+SET @row := 0;
+UPDATE books SET new_id = (@row := @row + 1);
+ALTER TABLE books MODIFY new_id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE books DROP PRIMARY KEY, DROP COLUMN id, CHANGE new_id id INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
+-- +goose StatementEnd

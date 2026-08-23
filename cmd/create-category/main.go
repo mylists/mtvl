@@ -186,10 +186,10 @@ func generateMigrationSQL(name, dialect string) string {
 
 	switch dialect {
 	case "mysql":
-		primaryKey = "INT AUTO_INCREMENT PRIMARY KEY"
+		primaryKey = "CHAR(36) PRIMARY KEY"
 		notesType = "TEXT"
 	default: // postgres
-		primaryKey = "SERIAL PRIMARY KEY"
+		primaryKey = "UUID PRIMARY KEY"
 		notesType = "TEXT DEFAULT ''"
 	}
 
@@ -224,11 +224,16 @@ func generateModelGo(name string) string {
 	structName := getStructName(name)
 	tmpl := `package {{NAME}}
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+	"mtvl/internal/idgen"
+)
 
 // {{STRUCT}} represents a tracking entry for {{NAME}}.
 type {{STRUCT}} struct {
-	ID        int64     ` + "`json:\"id\" gorm:\"primaryKey;autoIncrement;column:id\"`" + `
+	ID        string    ` + "`json:\"id\" gorm:\"primaryKey;size:36;column:id\"`" + `
 	UserID    int64     ` + "`json:\"user_id\" gorm:\"index;column:user_id;not null\"`" + `
 	Title     string    ` + "`json:\"title\" gorm:\"column:title;not null\"`" + `
 	Status    string    ` + "`json:\"status\" gorm:\"column:status;not null;default:'plan_to_watch'\"`" + `
@@ -240,6 +245,13 @@ type {{STRUCT}} struct {
 
 func ({{STRUCT}}) TableName() string {
 	return "{{NAME}}"
+}
+
+func (m *{{STRUCT}}) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == "" {
+		m.ID = idgen.New()
+	}
+	return nil
 }
 `
 	r := strings.NewReplacer("{{NAME}}", name, "{{STRUCT}}", structName)
@@ -262,6 +274,7 @@ import (
 	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
+	"mtvl/internal/idgen"
 )
 
 type Module struct {
@@ -403,7 +416,7 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs []int64 ` + "`json:\"ids\"`" + `
+		IDs []string ` + "`json:\"ids\"`" + `
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
 		respondError(w, http.StatusBadRequest, "Invalid request body: ids array required")
@@ -429,7 +442,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs    []int64 ` + "`json:\"ids\"`" + `
+		IDs    []string ` + "`json:\"ids\"`" + `
 		Status string  ` + "`json:\"status\"`" + `
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 || strings.TrimSpace(req.Status) == "" {
@@ -510,15 +523,14 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
 
 	var item {{STRUCT}}
-	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -536,9 +548,8 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
@@ -585,9 +596,8 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
@@ -687,7 +697,7 @@ func TestModuleCRUD(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
 		t.Fatalf("failed to unmarshal created item: %v", err)
 	}
-	if created.ID == 0 || created.Title != "Sample Item" {
+	if created.ID == "" || created.Title != "Sample Item" {
 		t.Errorf("unexpected item: %+v", created)
 	}
 

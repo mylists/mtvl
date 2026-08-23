@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"mtvl/internal/auth"
 	"mtvl/internal/core"
+	"mtvl/internal/idgen"
 )
 
 // Module implements core.CategoryModule for TV Shows.
@@ -158,7 +159,7 @@ func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs []int64 `json:"ids"`
+		IDs []string `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
 		respondError(w, http.StatusBadRequest, "Invalid request body: ids array required")
@@ -184,8 +185,8 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IDs    []int64 `json:"ids"`
-		Status string  `json:"status"`
+		IDs    []string `json:"ids"`
+		Status string   `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 || strings.TrimSpace(req.Status) == "" {
 		respondError(w, http.StatusBadRequest, "Invalid request body: ids array and status required")
@@ -274,15 +275,14 @@ func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid TV show ID")
 		return
 	}
 
 	var show TVShow
-	err = m.db.WithContext(r.Context()).Where("id = ?", id).First(&show).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&show).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
@@ -300,9 +300,8 @@ func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid TV show ID")
 		return
 	}
@@ -355,9 +354,8 @@ func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := idgen.Parse(chi.URLParam(r, "id"))
+	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid TV show ID")
 		return
 	}

@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
+
+	"mtvl/internal/idgen"
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/driver/sqlite"
@@ -70,6 +71,9 @@ func TestMoviesModuleCRUD(t *testing.T) {
 	if len(list) != 1 || list[0].Title != "Inception" {
 		t.Errorf("unexpected list: %+v", list)
 	}
+	if _, ok := idgen.Parse(list[0].ID); !ok {
+		t.Errorf("expected unique UUID id, got %q", list[0].ID)
+	}
 }
 
 func TestMoviesSharedAcrossUsers(t *testing.T) {
@@ -119,7 +123,7 @@ func TestMoviesSharedAcrossUsers(t *testing.T) {
 		t.Fatalf("expected other user to see the same movie, got %+v", list)
 	}
 
-	req = httptest.NewRequest("GET", "/api/v1/movies/"+strconv.FormatInt(created.ID, 10), nil)
+	req = httptest.NewRequest("GET", "/api/v1/movies/"+created.ID, nil)
 	req.Header.Set("X-User", "other")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

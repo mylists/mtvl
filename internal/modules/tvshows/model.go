@@ -1,10 +1,15 @@
 package tvshows
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+	"mtvl/internal/idgen"
+)
 
 // TVShow represents a TV show tracking entry.
 type TVShow struct {
-	ID             int64     `json:"id" gorm:"primaryKey;autoIncrement;column:id"`
+	ID             string    `json:"id" gorm:"primaryKey;size:36;column:id"`
 	UserID         int64     `json:"user_id" gorm:"index;column:user_id;not null"`
 	Title          string    `json:"title" gorm:"column:title;not null"`
 	CurrentSeason  int       `json:"current_season" gorm:"column:current_season"`
@@ -21,3 +26,9 @@ func (TVShow) TableName() string {
 	return "tv_shows"
 }
 
+func (m *TVShow) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == "" {
+		m.ID = idgen.New()
+	}
+	return nil
+}

@@ -52,6 +52,12 @@ func TestCategoryGenerator(t *testing.T) {
 	if strings.Contains(migSQL, "FOREIGN KEY") {
 		t.Errorf("generated migration should not cascade-delete shared category items")
 	}
+	if strings.Contains(migSQL, "SERIAL") || strings.Contains(migSQL, "AUTO_INCREMENT") {
+		t.Errorf("generated category ids should be unique UUIDs, not incremental")
+	}
+	if !strings.Contains(migSQL, "UUID PRIMARY KEY") {
+		t.Errorf("expected UUID PRIMARY KEY in generated postgres/sqlite migration")
+	}
 
 	testCode := generateHandlerTestGo(name, "/api/v1/games")
 	if len(testCode) == 0 {
