@@ -11,6 +11,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"mtvl/internal/auth"
+	"mtvl/internal/idgen"
 )
 
 func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
@@ -23,7 +24,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
-	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
+	user := &auth.User{ID: idgen.New(), Username: "testuser", Email: "test@example.com"}
 	return db, user
 }
 
@@ -73,7 +74,7 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 
 func TestTVShowsSharedAcrossUsers(t *testing.T) {
 	db, creator := setupTestDB(t)
-	other := &auth.User{ID: 2, Username: "other", Email: "other@example.com"}
+	other := &auth.User{ID: idgen.New(), Username: "other", Email: "other@example.com"}
 
 	mod := NewModule(db)
 	router := chi.NewRouter()

@@ -10,11 +10,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"mtvl/internal/idgen"
 )
 
 // UserModel represents the users table structure for GORM.
 type UserModel struct {
-	ID           int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	ID           string    `gorm:"primaryKey;size:36;column:id"`
 	Username     string    `gorm:"uniqueIndex;not null;column:username"`
 	Email        string    `gorm:"uniqueIndex;not null;column:email"`
 	PasswordHash string    `gorm:"column:password_hash;not null"`
@@ -23,6 +24,13 @@ type UserModel struct {
 
 func (UserModel) TableName() string {
 	return "users"
+}
+
+func (u *UserModel) BeforeCreate(tx *gorm.DB) error {
+	if u.ID == "" {
+		u.ID = idgen.New()
+	}
+	return nil
 }
 
 // JWTAuthProvider implements AuthProvider using GORM database and JWT tokens.
@@ -34,7 +42,7 @@ type JWTAuthProvider struct {
 
 // Claims defines standard JWT claims with User info.
 type Claims struct {
-	UserID   int64  `json:"user_id"`
+	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	jwt.RegisteredClaims
@@ -142,7 +150,7 @@ func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (
 }
 
 // UpdateUser updates user's profile details.
-func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID int64, username, email string) (*User, error) {
+func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID string, username, email string) (*User, error) {
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(strings.ToLower(email))
 
@@ -162,7 +170,7 @@ func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID int64, username
 	}
 
 	var u UserModel
-	if err := p.db.WithContext(ctx).First(&u, userID).Error; err != nil {
+	if err := p.db.WithContext(ctx).Where("id = ?", userID).First(&u).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
@@ -178,7 +186,7 @@ func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID int64, username
 }
 
 // ChangePassword changes the user password after validating the old password.
-func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
+func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error {
 	if newPassword == "" {
 		return fmt.Errorf("new password cannot be empty")
 	}
@@ -211,7 +219,7 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID int64, oldP
 }
 
 // DeleteUser deletes the user account. Shared category items are left in place; list links cascade away.
-func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID int64) error {
+func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID string) error {
 	err := p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Where("id = ?", userID).Delete(&UserModel{})
 		if res.Error != nil {
@@ -242,7 +250,7 @@ func (p *JWTAuthProvider) generateToken(user *User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(p.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
-			Subject:   fmt.Sprintf("%d", user.ID),
+			Subject:   user.ID,
 		},
 	}
 

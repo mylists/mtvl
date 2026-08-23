@@ -21,7 +21,7 @@ const UserContextKey userCtxKey = "authenticated_user"
 
 // User represents an authenticated user in the system.
 type User struct {
-	ID        int64     `json:"id"`
+	ID        string    `json:"id"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"created_at"`
@@ -33,9 +33,9 @@ type AuthProvider interface {
 	RegisterUser(ctx context.Context, username, email, password string) (*User, error)
 	AuthenticateUser(ctx context.Context, usernameOrEmail, password string) (string, *User, error)
 	VerifyToken(ctx context.Context, tokenString string) (*User, error)
-	UpdateUser(ctx context.Context, userID int64, username, email string) (*User, error)
-	ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error
-	DeleteUser(ctx context.Context, userID int64) error
+	UpdateUser(ctx context.Context, userID string, username, email string) (*User, error)
+	ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 // WithUserContext injects an authenticated User into request Context.

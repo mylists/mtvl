@@ -1,6 +1,8 @@
 package db
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -28,25 +30,33 @@ func TestRebind(t *testing.T) {
 }
 
 func TestDialectMigrationSQLSyntax(t *testing.T) {
-	pgUsers := `CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(100) NOT NULL UNIQUE,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);`
-	if !strings.Contains(pgUsers, "SERIAL PRIMARY KEY") {
-		t.Errorf("expected SERIAL PRIMARY KEY in postgres migration")
+	pgUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00008_user_unique_ids.sql"))
+	if err != nil {
+		t.Fatalf("failed to read postgres user unique id migration: %v", err)
+	}
+	if !strings.Contains(string(pgUsers), "new_id UUID") {
+		t.Errorf("expected postgres user ids to convert to UUID")
+	}
+	if strings.Contains(upSection(string(pgUsers)), "SERIAL") {
+		t.Errorf("postgres user unique id up migration should not keep serial ids")
 	}
 
-	mysqlUsers := `CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(100) NOT NULL UNIQUE,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);`
-	if !strings.Contains(mysqlUsers, "AUTO_INCREMENT PRIMARY KEY") {
-		t.Errorf("expected AUTO_INCREMENT PRIMARY KEY in mysql migration")
+	mysqlUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00008_user_unique_ids.sql"))
+	if err != nil {
+		t.Fatalf("failed to read mysql user unique id migration: %v", err)
 	}
+	if !strings.Contains(string(mysqlUsers), "CHAR(36)") {
+		t.Errorf("expected mysql user ids to convert to CHAR(36)")
+	}
+	if strings.Contains(upSection(string(mysqlUsers)), "AUTO_INCREMENT") {
+		t.Errorf("mysql user unique id up migration should not keep auto increment ids")
+	}
+}
+
+func upSection(sql string) string {
+	idx := strings.Index(sql, "-- +goose Down")
+	if idx < 0 {
+		return sql
+	}
+	return sql[:idx]
 }

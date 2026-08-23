@@ -327,7 +327,7 @@ func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "TV show deleted successfully"})
 }
 
-func (m *Module) userTVShowQuery(r *http.Request, userID int64) *gorm.DB {
+func (m *Module) userTVShowQuery(r *http.Request, userID string) *gorm.DB {
 	return m.db.WithContext(r.Context()).
 		Table("user_tv_shows").
 		Select("tv_shows.id AS id, tv_shows.title AS title, tv_shows.total_episodes AS total_episodes, user_tv_shows.current_season AS current_season, user_tv_shows.current_episode AS current_episode, user_tv_shows.status AS status, user_tv_shows.rating AS rating, user_tv_shows.notes AS notes, user_tv_shows.created_at AS created_at, user_tv_shows.updated_at AS updated_at").
@@ -665,7 +665,7 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (m *Module) respondUserTVShow(w http.ResponseWriter, r *http.Request, userID int64, showID string, status int) {
+func (m *Module) respondUserTVShow(w http.ResponseWriter, r *http.Request, userID string, showID string, status int) {
 	var item TVShowListItem
 	err := m.userTVShowQuery(r, userID).Where("user_tv_shows.tv_show_id = ?", showID).Scan(&item).Error
 	if err != nil {

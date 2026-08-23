@@ -332,7 +332,7 @@ func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Movie deleted successfully"})
 }
 
-func (m *Module) userMovieQuery(r *http.Request, userID int64) *gorm.DB {
+func (m *Module) userMovieQuery(r *http.Request, userID string) *gorm.DB {
 	return m.db.WithContext(r.Context()).
 		Table("user_movies").
 		Select("movies.id AS id, movies.title AS title, movies.release_year AS release_year, movies.director AS director, user_movies.status AS status, user_movies.rating AS rating, user_movies.notes AS notes, user_movies.created_at AS created_at, user_movies.updated_at AS updated_at").
@@ -658,7 +658,7 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (m *Module) respondUserMovie(w http.ResponseWriter, r *http.Request, userID int64, movieID string, status int) {
+func (m *Module) respondUserMovie(w http.ResponseWriter, r *http.Request, userID string, movieID string, status int) {
 	var item MovieListItem
 	err := m.userMovieQuery(r, userID).Where("user_movies.movie_id = ?", movieID).Scan(&item).Error
 	if err != nil {

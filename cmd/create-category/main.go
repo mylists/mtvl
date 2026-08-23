@@ -205,12 +205,12 @@ func generateMigrationSQL(name, dialect string) string {
 	case "mysql":
 		itemPK = "CHAR(36) PRIMARY KEY"
 		itemFK = "CHAR(36) NOT NULL"
-		userIDType = "INT NOT NULL"
+		userIDType = "CHAR(36) NOT NULL"
 		notesType = "TEXT"
 	default: // postgres
 		itemPK = "UUID PRIMARY KEY"
 		itemFK = "UUID NOT NULL"
-		userIDType = "INTEGER NOT NULL"
+		userIDType = "UUID NOT NULL"
 		notesType = "TEXT DEFAULT ''"
 	}
 
@@ -287,7 +287,7 @@ func (m *{{STRUCT}}) BeforeCreate(tx *gorm.DB) error {
 
 // User{{STRUCT}} links a user to a catalog item on their list.
 type User{{STRUCT}} struct {
-	UserID    int64     ` + "`json:\"user_id\" gorm:\"primaryKey;column:user_id\"`" + `
+	UserID    string    ` + "`json:\"user_id\" gorm:\"primaryKey;size:36;column:user_id\"`" + `
 	ItemID    string    ` + "`json:\"{{ITEM_COL}}\" gorm:\"primaryKey;size:36;column:{{ITEM_COL}}\"`" + `
 	Status    string    ` + "`json:\"status\" gorm:\"column:status;not null;default:'plan_to_watch'\"`" + `
 	Rating    int       ` + "`json:\"rating\" gorm:\"column:rating;default:0\"`" + `
@@ -640,7 +640,7 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Item deleted successfully"})
 }
 
-func (m *Module) userItemQuery(r *http.Request, userID int64) *gorm.DB {
+func (m *Module) userItemQuery(r *http.Request, userID string) *gorm.DB {
 	return m.db.WithContext(r.Context()).
 		Table("user_{{NAME}}").
 		Select("{{NAME}}.id AS id, {{NAME}}.title AS title, user_{{NAME}}.status AS status, user_{{NAME}}.rating AS rating, user_{{NAME}}.notes AS notes, user_{{NAME}}.created_at AS created_at, user_{{NAME}}.updated_at AS updated_at").
@@ -964,7 +964,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID int64, itemID string, status int) {
+func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID string, itemID string, status int) {
 	var item {{STRUCT}}ListItem
 	err := m.userItemQuery(r, userID).Where("user_{{NAME}}.{{ITEM_COL}} = ?", itemID).Scan(&item).Error
 	if err != nil {
@@ -1014,6 +1014,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"mtvl/internal/auth"
+	"mtvl/internal/idgen"
 )
 
 func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
@@ -1026,7 +1027,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
-	user := &auth.User{ID: 1, Username: "testuser", Email: "test@example.com"}
+	user := &auth.User{ID: idgen.New(), Username: "testuser", Email: "test@example.com"}
 	return db, user
 }
 

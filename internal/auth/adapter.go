@@ -39,7 +39,7 @@ func (e *ExternalAuthProvider) VerifyToken(ctx context.Context, tokenString stri
 	// In production, this would verify JWKS signatures from IssuerURL.
 	if tokenString == "valid-external-token" {
 		return &User{
-			ID:       999,
+			ID:       "99999999-9999-4999-8999-999999999999",
 			Username: "external_user",
 			Email:    "external@example.com",
 		}, nil
@@ -48,15 +48,15 @@ func (e *ExternalAuthProvider) VerifyToken(ctx context.Context, tokenString stri
 	return nil, fmt.Errorf("external token verification failed: %w", ErrInvalidToken)
 }
 
-func (e *ExternalAuthProvider) UpdateUser(ctx context.Context, userID int64, username, email string) (*User, error) {
+func (e *ExternalAuthProvider) UpdateUser(ctx context.Context, userID string, username, email string) (*User, error) {
 	return nil, errors.New("user profile updates handled by external auth provider portal")
 }
 
-func (e *ExternalAuthProvider) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
+func (e *ExternalAuthProvider) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error {
 	return errors.New("password updates handled by external auth provider portal")
 }
 
-func (e *ExternalAuthProvider) DeleteUser(ctx context.Context, userID int64) error {
+func (e *ExternalAuthProvider) DeleteUser(ctx context.Context, userID string) error {
 	return errors.New("account deletion handled by external auth provider portal")
 }
 

@@ -29,7 +29,7 @@ func (m *TVShow) BeforeCreate(tx *gorm.DB) error {
 
 // UserTVShow links a user to a catalog TV show on their list.
 type UserTVShow struct {
-	UserID         int64     `json:"user_id" gorm:"primaryKey;column:user_id"`
+	UserID         string    `json:"user_id" gorm:"primaryKey;size:36;column:user_id"`
 	TVShowID       string    `json:"tv_show_id" gorm:"primaryKey;size:36;column:tv_show_id"`
 	CurrentSeason  int       `json:"current_season" gorm:"column:current_season"`
 	CurrentEpisode int       `json:"current_episode" gorm:"column:current_episode"`

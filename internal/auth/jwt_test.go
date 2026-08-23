@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"mtvl/internal/idgen"
 )
 
 func setupTestGormDB(t *testing.T) *gorm.DB {
@@ -31,8 +32,22 @@ func TestJWTAuthProviderRegisterUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to register user: %v", err)
 	}
-	if user.ID == 0 || user.Username != "testuser" || user.Email != "test@example.com" {
+	if user.Username != "testuser" || user.Email != "test@example.com" {
 		t.Errorf("unexpected user data: %+v", user)
+	}
+	if _, ok := idgen.Parse(user.ID); !ok {
+		t.Errorf("expected unique UUID id, got %q", user.ID)
+	}
+
+	other, err := provider.RegisterUser(ctx, "otheruser", "other@example.com", "password123")
+	if err != nil {
+		t.Fatalf("failed to register second user: %v", err)
+	}
+	if _, ok := idgen.Parse(other.ID); !ok {
+		t.Errorf("expected unique UUID id, got %q", other.ID)
+	}
+	if other.ID == user.ID {
+		t.Errorf("expected distinct user ids, got %q twice", user.ID)
 	}
 }
 
@@ -60,7 +75,7 @@ func TestJWTAuthProviderAuthenticateUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to verify token: %v", err)
 	}
-	if verified.Username != "testuser" {
+	if verified.Username != "testuser" || verified.ID != user.ID {
 		t.Errorf("unexpected verified user: %+v", verified)
 	}
 }

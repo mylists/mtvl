@@ -320,7 +320,7 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Item deleted successfully"})
 }
 
-func (m *Module) userBookQuery(r *http.Request, userID int64) *gorm.DB {
+func (m *Module) userBookQuery(r *http.Request, userID string) *gorm.DB {
 	return m.db.WithContext(r.Context()).
 		Table("user_books").
 		Select("books.id AS id, books.title AS title, user_books.status AS status, user_books.rating AS rating, user_books.notes AS notes, user_books.created_at AS created_at, user_books.updated_at AS updated_at").
@@ -644,7 +644,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID int64, bookID string, status int) {
+func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID string, bookID string, status int) {
 	var item BookListItem
 	err := m.userBookQuery(r, userID).Where("user_books.book_id = ?", bookID).Scan(&item).Error
 	if err != nil {

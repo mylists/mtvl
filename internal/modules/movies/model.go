@@ -30,7 +30,7 @@ func (m *Movie) BeforeCreate(tx *gorm.DB) error {
 
 // UserMovie links a user to a catalog movie on their list.
 type UserMovie struct {
-	UserID    int64     `json:"user_id" gorm:"primaryKey;column:user_id"`
+	UserID    string    `json:"user_id" gorm:"primaryKey;size:36;column:user_id"`
 	MovieID   string    `json:"movie_id" gorm:"primaryKey;size:36;column:movie_id"`
 	Status    string    `json:"status" gorm:"column:status;not null;default:'plan_to_watch'"`
 	Rating    int       `json:"rating" gorm:"column:rating;default:0"`

@@ -66,6 +66,23 @@ func TestCategoryGenerator(t *testing.T) {
 	if !strings.Contains(migSQL, "UUID PRIMARY KEY") {
 		t.Errorf("expected UUID PRIMARY KEY in generated postgres/sqlite migration")
 	}
+	if strings.Contains(migSQL, "user_id INTEGER") || strings.Contains(migSQL, "user_id INT ") {
+		t.Errorf("generated user ids should be unique UUIDs, not incremental")
+	}
+	if !strings.Contains(migSQL, "user_id UUID NOT NULL") {
+		t.Errorf("expected user_id UUID NOT NULL in generated postgres/sqlite migration")
+	}
+	if strings.Contains(modelCode, "UserID    int64") || strings.Contains(handlerCode, "userID int64") {
+		t.Errorf("generated user ids should be unique strings, not serial ints")
+	}
+
+	mysqlSQL := generateMigrationSQL(name, "mysql")
+	if strings.Contains(mysqlSQL, "AUTO_INCREMENT") || strings.Contains(mysqlSQL, "user_id INT") {
+		t.Errorf("generated mysql user ids should be unique CHAR(36) values, not incremental")
+	}
+	if !strings.Contains(mysqlSQL, "user_id CHAR(36) NOT NULL") {
+		t.Errorf("expected user_id CHAR(36) NOT NULL in generated mysql migration")
+	}
 
 	testCode := generateHandlerTestGo(name, "/api/v1/games")
 	if len(testCode) == 0 {

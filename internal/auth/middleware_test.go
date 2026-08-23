@@ -8,7 +8,7 @@ import (
 
 func TestAuthMiddleware(t *testing.T) {
 	provider := NewJWTAuthProvider(nil, "secret-key")
-	token, err := provider.generateToken(&User{ID: 1, Username: "alice", Email: "alice@example.com"})
+	token, err := provider.generateToken(&User{ID: "11111111-1111-4111-8111-111111111111", Username: "alice", Email: "alice@example.com"})
 	if err != nil {
 		t.Fatalf("failed to generate token: %v", err)
 	}

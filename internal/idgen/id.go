@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// New returns a random UUID string for shared category items.
+// New returns a random UUID string for users and shared category items.
 func New() string {
 	return uuid.NewString()
 }
