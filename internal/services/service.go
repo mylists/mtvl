@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -44,46 +45,65 @@ type StatusCount struct {
 	Count  int    `gorm:"column:count"`
 }
 
-// GetStats returns aggregated dashboard statistics across all tracking categories.
+// GetStats returns aggregated dashboard statistics for the current user's lists.
 func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
+	user, ok := auth.GetUserFromContext(r.Context())
+	if !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	ctx := r.Context()
 
-	// Movies stats
 	var movieStat StatResult
-	_ = s.db.WithContext(ctx).Model(&movies.Movie{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&movieStat)
+	_ = s.db.WithContext(ctx).Model(&movies.UserMovie{}).
+		Where("user_id = ?", user.ID).
+		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
+		Scan(&movieStat)
 
 	movieStatusBreakdown := make(map[string]int)
 	var movieCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&movies.Movie{}).Select("status, COUNT(*) as count").Group("status").Find(&movieCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&movies.UserMovie{}).
+		Select("status, COUNT(*) as count").
+		Where("user_id = ?", user.ID).
+		Group("status").
+		Find(&movieCounts).Error; err == nil {
 		for _, c := range movieCounts {
 			movieStatusBreakdown[c.Status] = c.Count
 		}
 	}
 
-	// TV Shows stats
 	var tvStat StatResult
-	_ = s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&tvStat)
+	_ = s.db.WithContext(ctx).Model(&tvshows.UserTVShow{}).
+		Where("user_id = ?", user.ID).
+		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
+		Scan(&tvStat)
 
 	tvStatusBreakdown := make(map[string]int)
 	var tvCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&tvshows.TVShow{}).Select("status, COUNT(*) as count").Group("status").Find(&tvCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&tvshows.UserTVShow{}).
+		Select("status, COUNT(*) as count").
+		Where("user_id = ?", user.ID).
+		Group("status").
+		Find(&tvCounts).Error; err == nil {
 		for _, c := range tvCounts {
 			tvStatusBreakdown[c.Status] = c.Count
 		}
 	}
 
-	// Books stats
 	var bookStat StatResult
-	_ = s.db.WithContext(ctx).Model(&books.Book{}).Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").Scan(&bookStat)
+	_ = s.db.WithContext(ctx).Model(&books.UserBook{}).
+		Where("user_id = ?", user.ID).
+		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
+		Scan(&bookStat)
 
 	bookStatusBreakdown := make(map[string]int)
 	var bookCounts []StatusCount
-	if err := s.db.WithContext(ctx).Model(&books.Book{}).Select("status, COUNT(*) as count").Group("status").Find(&bookCounts).Error; err == nil {
+	if err := s.db.WithContext(ctx).Model(&books.UserBook{}).
+		Select("status, COUNT(*) as count").
+		Where("user_id = ?", user.ID).
+		Group("status").
+		Find(&bookCounts).Error; err == nil {
 		for _, c := range bookCounts {
 			bookStatusBreakdown[c.Status] = c.Count
 		}
@@ -113,7 +133,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GlobalSearch searches across movies, tv shows, and books for a keyword.
+// GlobalSearch searches shared catalog titles across movies, tv shows, and books.
 func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
@@ -129,17 +149,14 @@ func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 	pattern := "%" + strings.ToLower(queryTerm) + "%"
 	ctx := r.Context()
 
-	// Search movies
 	movieResults := make([]movies.Movie, 0)
-	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(director) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern, pattern).Find(&movieResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(director) LIKE ?", pattern, pattern).Find(&movieResults).Error
 
-	// Search tv shows
 	tvResults := make([]tvshows.TVShow, 0)
-	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern).Find(&tvResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ?", pattern).Find(&tvResults).Error
 
-	// Search books
 	bookResults := make([]books.Book, 0)
-	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ? OR LOWER(notes) LIKE ?", pattern, pattern).Find(&bookResults).Error
+	_ = s.db.WithContext(ctx).Where("LOWER(title) LIKE ?", pattern).Find(&bookResults).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"query": queryTerm,
@@ -152,7 +169,7 @@ func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ExportUserData exports all tracking data for the authenticated user as a structured JSON backup.
+// ExportUserData exports the shared catalog plus the authenticated user's list links.
 func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
@@ -162,17 +179,23 @@ func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 
-	// Movies
 	movieList := make([]movies.Movie, 0)
 	_ = s.db.WithContext(ctx).Order("id ASC").Find(&movieList).Error
 
-	// TV Shows
 	tvList := make([]tvshows.TVShow, 0)
 	_ = s.db.WithContext(ctx).Order("id ASC").Find(&tvList).Error
 
-	// Books
 	bookList := make([]books.Book, 0)
 	_ = s.db.WithContext(ctx).Order("id ASC").Find(&bookList).Error
+
+	userMovies := make([]movies.UserMovie, 0)
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("movie_id ASC").Find(&userMovies).Error
+
+	userTVShows := make([]tvshows.UserTVShow, 0)
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("tv_show_id ASC").Find(&userTVShows).Error
+
+	userBooks := make([]books.UserBook, 0)
+	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("book_id ASC").Find(&userBooks).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"version":     "1.0",
@@ -183,10 +206,15 @@ func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) 
 			"tv_shows": tvList,
 			"books":    bookList,
 		},
+		"lists": map[string]interface{}{
+			"movies":   userMovies,
+			"tv_shows": userTVShows,
+			"books":    userBooks,
+		},
 	})
 }
 
-// ImportUserData imports tracking data into the user's account.
+// ImportUserData imports catalog items and adds them to the current user's lists.
 func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
@@ -233,39 +261,53 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if req.Overwrite {
-			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&movies.Movie{})
-			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&tvshows.TVShow{})
-			tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&books.Book{})
+			if err := tx.Where("user_id = ?", user.ID).Delete(&movies.UserMovie{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id = ?", user.ID).Delete(&tvshows.UserTVShow{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id = ?", user.ID).Delete(&books.UserBook{}).Error; err != nil {
+				return err
+			}
 		}
 
 		now := time.Now()
 
 		for _, mov := range req.Data.Movies {
-			if strings.TrimSpace(mov.Title) == "" {
+			title := strings.TrimSpace(mov.Title)
+			if title == "" {
+				continue
+			}
+			item, err := findOrCreateMovie(tx, title, mov.ReleaseYear, mov.Director, now)
+			if err != nil {
 				continue
 			}
 			status := mov.Status
 			if status == "" {
 				status = "plan_to_watch"
 			}
-			m := movies.Movie{
-				UserID:      user.ID,
-				Title:       mov.Title,
-				ReleaseYear: mov.ReleaseYear,
-				Director:    mov.Director,
-				Status:      status,
-				Rating:      mov.Rating,
-				Notes:       mov.Notes,
-				CreatedAt:   now,
-				UpdatedAt:   now,
+			link := movies.UserMovie{
+				UserID:    user.ID,
+				MovieID:   item.ID,
+				Status:    status,
+				Rating:    mov.Rating,
+				Notes:     mov.Notes,
+				CreatedAt: now,
+				UpdatedAt: now,
 			}
-			if err := tx.Create(&m).Error; err == nil {
+			if err := upsertUserMovie(tx, &link); err == nil {
 				importedMovies++
 			}
 		}
 
 		for _, show := range req.Data.TVShows {
-			if strings.TrimSpace(show.Title) == "" {
+			title := strings.TrimSpace(show.Title)
+			if title == "" {
+				continue
+			}
+			item, err := findOrCreateTVShow(tx, title, show.TotalEpisodes, now)
+			if err != nil {
 				continue
 			}
 			status := show.Status
@@ -276,41 +318,45 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 			if season <= 0 {
 				season = 1
 			}
-			t := tvshows.TVShow{
+			link := tvshows.UserTVShow{
 				UserID:         user.ID,
-				Title:          show.Title,
+				TVShowID:       item.ID,
 				CurrentSeason:  season,
 				CurrentEpisode: show.CurrentEpisode,
-				TotalEpisodes:  show.TotalEpisodes,
 				Status:         status,
 				Rating:         show.Rating,
 				Notes:          show.Notes,
 				CreatedAt:      now,
 				UpdatedAt:      now,
 			}
-			if err := tx.Create(&t).Error; err == nil {
+			if err := upsertUserTVShow(tx, &link); err == nil {
 				importedTVShows++
 			}
 		}
 
 		for _, book := range req.Data.Books {
-			if strings.TrimSpace(book.Title) == "" {
+			title := strings.TrimSpace(book.Title)
+			if title == "" {
+				continue
+			}
+			item, err := findOrCreateBook(tx, title, now)
+			if err != nil {
 				continue
 			}
 			status := book.Status
 			if status == "" {
 				status = "plan_to_read"
 			}
-			b := books.Book{
+			link := books.UserBook{
 				UserID:    user.ID,
-				Title:     book.Title,
+				BookID:    item.ID,
 				Status:    status,
 				Rating:    book.Rating,
 				Notes:     book.Notes,
 				CreatedAt: now,
 				UpdatedAt: now,
 			}
-			if err := tx.Create(&b).Error; err == nil {
+			if err := upsertUserBook(tx, &link); err == nil {
 				importedBooks++
 			}
 		}
@@ -333,6 +379,122 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func findOrCreateMovie(tx *gorm.DB, title string, year int, director string, now time.Time) (*movies.Movie, error) {
+	var existing movies.Movie
+	err := tx.Where("LOWER(title) = ?", strings.ToLower(title)).First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	item := movies.Movie{
+		Title:       title,
+		ReleaseYear: year,
+		Director:    director,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := tx.Create(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func findOrCreateTVShow(tx *gorm.DB, title string, totalEpisodes int, now time.Time) (*tvshows.TVShow, error) {
+	var existing tvshows.TVShow
+	err := tx.Where("LOWER(title) = ?", strings.ToLower(title)).First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	item := tvshows.TVShow{
+		Title:         title,
+		TotalEpisodes: totalEpisodes,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := tx.Create(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func findOrCreateBook(tx *gorm.DB, title string, now time.Time) (*books.Book, error) {
+	var existing books.Book
+	err := tx.Where("LOWER(title) = ?", strings.ToLower(title)).First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	item := books.Book{
+		Title:     title,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := tx.Create(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func upsertUserMovie(tx *gorm.DB, link *movies.UserMovie) error {
+	var existing movies.UserMovie
+	err := tx.Where("user_id = ? AND movie_id = ?", link.UserID, link.MovieID).First(&existing).Error
+	if err == nil {
+		return tx.Model(&existing).Updates(map[string]interface{}{
+			"status":     link.Status,
+			"rating":     link.Rating,
+			"notes":      link.Notes,
+			"updated_at": link.UpdatedAt,
+		}).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(link).Error
+}
+
+func upsertUserTVShow(tx *gorm.DB, link *tvshows.UserTVShow) error {
+	var existing tvshows.UserTVShow
+	err := tx.Where("user_id = ? AND tv_show_id = ?", link.UserID, link.TVShowID).First(&existing).Error
+	if err == nil {
+		return tx.Model(&existing).Updates(map[string]interface{}{
+			"current_season":  link.CurrentSeason,
+			"current_episode": link.CurrentEpisode,
+			"status":          link.Status,
+			"rating":          link.Rating,
+			"notes":           link.Notes,
+			"updated_at":      link.UpdatedAt,
+		}).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(link).Error
+}
+
+func upsertUserBook(tx *gorm.DB, link *books.UserBook) error {
+	var existing books.UserBook
+	err := tx.Where("user_id = ? AND book_id = ?", link.UserID, link.BookID).First(&existing).Error
+	if err == nil {
+		return tx.Model(&existing).Updates(map[string]interface{}{
+			"status":     link.Status,
+			"rating":     link.Rating,
+			"notes":      link.Notes,
+			"updated_at": link.UpdatedAt,
+		}).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(link).Error
+}
+
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -342,4 +504,3 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
-

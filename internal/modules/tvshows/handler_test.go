@@ -19,7 +19,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&auth.UserModel{}, &TVShow{}); err != nil {
+	if err := db.AutoMigrate(&auth.UserModel{}, &TVShow{}, &UserTVShow{}); err != nil {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 	mod.RegisterRoutes(router, authMw)
 
 	// 1. Create TV Show
-	body := []byte(`{"title":"Breaking Bad","current_season":5,"current_episode":16,"total_episodes":62,"status":"completed","rating":10,"notes":"Goat show"}`)
+	body := []byte(`{"title":"Breaking Bad","total_episodes":62}`)
 	req := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -88,7 +88,7 @@ func TestTVShowsSharedAcrossUsers(t *testing.T) {
 	})
 	mod.RegisterRoutes(router, func(next http.Handler) http.Handler { return next })
 
-	body := []byte(`{"title":"Shared Show","status":"watching"}`)
+	body := []byte(`{"title":"Shared Show"}`)
 	req := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -126,4 +126,3 @@ func TestTVShowsSharedAcrossUsers(t *testing.T) {
 		t.Fatalf("expected 200 OK for shared item id, got %d. Body: %s", rr.Code, rr.Body.String())
 	}
 }
-

@@ -21,7 +21,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&auth.UserModel{}, &Movie{}); err != nil {
+	if err := db.AutoMigrate(&auth.UserModel{}, &Movie{}, &UserMovie{}); err != nil {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
@@ -45,7 +45,7 @@ func TestMoviesModuleCRUD(t *testing.T) {
 	mod.RegisterRoutes(router, authMw)
 
 	// 1. Create Movie
-	body := []byte(`{"title":"Inception","release_year":2010,"director":"Christopher Nolan","status":"completed","rating":10,"notes":"Masterpiece"}`)
+	body := []byte(`{"title":"Inception","release_year":2010,"director":"Christopher Nolan"}`)
 	req := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -93,7 +93,7 @@ func TestMoviesSharedAcrossUsers(t *testing.T) {
 	})
 	mod.RegisterRoutes(router, func(next http.Handler) http.Handler { return next })
 
-	body := []byte(`{"title":"Shared Movie","status":"completed"}`)
+	body := []byte(`{"title":"Shared Movie"}`)
 	req := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -132,3 +132,78 @@ func TestMoviesSharedAcrossUsers(t *testing.T) {
 	}
 }
 
+func TestMoviesUserListIsolation(t *testing.T) {
+	db, creator := setupTestDB(t)
+	other := &auth.User{ID: 2, Username: "other", Email: "other@example.com"}
+
+	mod := NewModule(db)
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := creator
+			if r.Header.Get("X-User") == "other" {
+				user = other
+			}
+			next.ServeHTTP(w, r.WithContext(auth.WithUserContext(r.Context(), user)))
+		})
+	})
+	mod.RegisterRoutes(router, func(next http.Handler) http.Handler { return next })
+
+	body := []byte(`{"title":"List Movie"}`)
+	req := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var created Movie
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to unmarshal created movie: %v", err)
+	}
+
+	addBody, _ := json.Marshal(map[string]interface{}{
+		"id":     created.ID,
+		"status": "completed",
+		"rating": 9,
+	})
+	req = httptest.NewRequest("POST", "/api/v1/movies/list", bytes.NewBuffer(addBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created for list add, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/movies/list", nil)
+	req.Header.Set("X-User", "other")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var otherList []MovieListItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &otherList); err != nil {
+		t.Fatalf("failed to unmarshal other user list: %v", err)
+	}
+	if len(otherList) != 0 {
+		t.Fatalf("expected other user list to be empty, got %+v", otherList)
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/movies/list", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var creatorList []MovieListItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &creatorList); err != nil {
+		t.Fatalf("failed to unmarshal creator list: %v", err)
+	}
+	if len(creatorList) != 1 || creatorList[0].ID != created.ID || creatorList[0].Status != "completed" {
+		t.Fatalf("expected creator list to include the movie, got %+v", creatorList)
+	}
+}

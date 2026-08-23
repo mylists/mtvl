@@ -46,11 +46,19 @@ func TestCategoryGenerator(t *testing.T) {
 	if len(handlerCode) == 0 {
 		t.Errorf("expected non-empty handler code")
 	}
-	if strings.Contains(handlerCode, `Where("user_id = ?`) || strings.Contains(handlerCode, "AND user_id = ?") {
-		t.Errorf("generated handler should not scope items to a single user")
+	if strings.Contains(handlerCode, `Model(&VideoGame{}).Where("user_id`) {
+		t.Errorf("generated catalog queries should not scope items to a single user")
 	}
-	if strings.Contains(migSQL, "FOREIGN KEY") {
-		t.Errorf("generated migration should not cascade-delete shared category items")
+	catalogStart := strings.Index(migSQL, "CREATE TABLE IF NOT EXISTS video_games")
+	listStart := strings.Index(migSQL, "CREATE TABLE IF NOT EXISTS user_video_games")
+	if catalogStart >= 0 && listStart > catalogStart && strings.Contains(migSQL[catalogStart:listStart], "user_id") {
+		t.Errorf("category table should only store shared items")
+	}
+	if listStart < 0 {
+		t.Errorf("expected user list join table")
+	}
+	if !strings.Contains(migSQL, "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE") {
+		t.Errorf("list table should unlink when a user is deleted")
 	}
 	if strings.Contains(migSQL, "SERIAL") || strings.Contains(migSQL, "AUTO_INCREMENT") {
 		t.Errorf("generated category ids should be unique UUIDs, not incremental")

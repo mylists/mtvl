@@ -42,13 +42,13 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		"paths": map[string]interface{}{
-			"/health":     healthProbePath("Combined health check including Postgres"),
-			"/healthz":    healthProbePath("Combined health check including Postgres (Kubernetes healthz)"),
-			"/livez":      liveProbePath("Kubernetes liveness probe. Process only; does not check Postgres."),
-			"/readyz":     healthProbePath("Kubernetes readiness probe. Requires Postgres to be reachable."),
-			"/startupz":   healthProbePath("Kubernetes startup probe. Requires Postgres to be reachable."),
-			"/health/live": liveProbePath("Kubernetes liveness probe alias"),
-			"/health/ready": healthProbePath("Kubernetes readiness probe alias"),
+			"/health":         healthProbePath("Combined health check including Postgres"),
+			"/healthz":        healthProbePath("Combined health check including Postgres (Kubernetes healthz)"),
+			"/livez":          liveProbePath("Kubernetes liveness probe. Process only; does not check Postgres."),
+			"/readyz":         healthProbePath("Kubernetes readiness probe. Requires Postgres to be reachable."),
+			"/startupz":       healthProbePath("Kubernetes startup probe. Requires Postgres to be reachable."),
+			"/health/live":    liveProbePath("Kubernetes liveness probe alias"),
+			"/health/ready":   healthProbePath("Kubernetes readiness probe alias"),
 			"/health/startup": healthProbePath("Kubernetes startup probe alias"),
 			"/api/v1/categories": map[string]interface{}{
 				"get": map[string]interface{}{
@@ -177,11 +177,10 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/movies": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared movies with search, status filtering, sorting, and pagination",
+					"summary":  "List shared movie catalog items with search, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"parameters": []map[string]interface{}{
 						{"name": "q", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Search term"},
-						{"name": "status", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Filter status"},
 						{"name": "sort_by", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Column to sort by"},
 						{"name": "order", "in": "query", "schema": map[string]string{"type": "string"}, "description": "asc or desc"},
 						{"name": "page", "in": "query", "schema": map[string]string{"type": "integer"}, "description": "Page number"},
@@ -192,16 +191,32 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 				"post": map[string]interface{}{
-					"summary":  "Create movie",
+					"summary":  "Create movie catalog item",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"201": map[string]interface{}{"description": "Movie created"},
 					},
 				},
 			},
+			"/api/v1/movies/list": map[string]interface{}{
+				"get": map[string]interface{}{
+					"summary":  "List movies on the current user's list",
+					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "User movie list"},
+					},
+				},
+				"post": map[string]interface{}{
+					"summary":  "Add a catalog movie to the current user's list",
+					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"201": map[string]interface{}{"description": "Movie added to list"},
+					},
+				},
+			},
 			"/api/v1/movies/bulk-delete": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary":  "Bulk delete movies",
+					"summary":  "Bulk delete movie catalog items",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Movies deleted"},
@@ -210,7 +225,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/movies/bulk-status": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary":  "Bulk update movies status",
+					"summary":  "Bulk update movies status on the current user's list",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Movies status updated"},
@@ -219,14 +234,14 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/tvshows": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared TV shows with search, filtering, sorting, and pagination",
+					"summary":  "List shared TV show catalog items with search, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of TV shows"},
 					},
 				},
 				"post": map[string]interface{}{
-					"summary":  "Create TV show",
+					"summary":  "Create TV show catalog item",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"201": map[string]interface{}{"description": "TV show created"},
@@ -235,14 +250,14 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/books": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared books with search, filtering, sorting, and pagination",
+					"summary":  "List shared book catalog items with search, sorting, and pagination",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of books"},
 					},
 				},
 				"post": map[string]interface{}{
-					"summary":  "Create book",
+					"summary":  "Create book catalog item",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"201": map[string]interface{}{"description": "Book created"},
@@ -251,7 +266,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/stats": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "Get cross-category dashboard statistics",
+					"summary":  "Get dashboard statistics for the current user's lists",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Dashboard statistics"},
@@ -272,7 +287,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/export": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "Export all shared category data as JSON",
+					"summary":  "Export shared catalog items and the current user's lists",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Shared category data backup"},
@@ -281,7 +296,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/import": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary":  "Import tracking data into the shared catalog",
+					"summary":  "Import catalog items and add them to the current user's lists",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "Data imported successfully"},

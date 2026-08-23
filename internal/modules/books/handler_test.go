@@ -19,7 +19,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&auth.UserModel{}, &Book{}); err != nil {
+	if err := db.AutoMigrate(&auth.UserModel{}, &Book{}, &UserBook{}); err != nil {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestModuleCRUD(t *testing.T) {
 	mod.RegisterRoutes(router, authMw)
 
 	// 1. Create
-	body := []byte(`{"title":"Sample Item","status":"completed","rating":9}`)
+	body := []byte(`{"title":"Sample Item"}`)
 	req := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -88,7 +88,7 @@ func TestBooksSharedAcrossUsers(t *testing.T) {
 	})
 	mod.RegisterRoutes(router, func(next http.Handler) http.Handler { return next })
 
-	body := []byte(`{"title":"Shared Book","status":"completed"}`)
+	body := []byte(`{"title":"Shared Book"}`)
 	req := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -126,4 +126,3 @@ func TestBooksSharedAcrossUsers(t *testing.T) {
 		t.Fatalf("expected 200 OK for shared item id, got %d. Body: %s", rr.Code, rr.Body.String())
 	}
 }
-
