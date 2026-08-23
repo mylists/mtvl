@@ -169,10 +169,10 @@ func (m *Module) bulkDeleteMovies(w http.ResponseWriter, r *http.Request) {
 
 	var deletedCount int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("movie_id IN ?", req.IDs).Delete(&UserMovie{}).Error; err != nil {
+		if err := tx.Where("movie_id IN ?", idgen.Args(req.IDs)).Delete(&UserMovie{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id IN ?", req.IDs).Delete(&Movie{})
+		res := tx.Where("id IN ?", idgen.Args(req.IDs)).Delete(&Movie{})
 		deletedCount = res.RowsAffected
 		return res.Error
 	})
@@ -240,7 +240,7 @@ func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mov Movie
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&mov).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&mov).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
@@ -277,7 +277,7 @@ func (m *Module) updateMovie(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&Movie{}).
-		Where("id = ?", id).
+		Where("id = ?", idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"title":        req.Title,
 			"release_year": req.ReleaseYear,
@@ -312,10 +312,10 @@ func (m *Module) deleteMovie(w http.ResponseWriter, r *http.Request) {
 
 	var deleted int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("movie_id = ?", id).Delete(&UserMovie{}).Error; err != nil {
+		if err := tx.Where("movie_id = ?", idgen.Arg(id)).Delete(&UserMovie{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id = ?", id).Delete(&Movie{})
+		res := tx.Where("id = ?", idgen.Arg(id)).Delete(&Movie{})
 		deleted = res.RowsAffected
 		return res.Error
 	})
@@ -337,7 +337,7 @@ func (m *Module) userMovieQuery(r *http.Request, userID string) *gorm.DB {
 		Table("user_movies").
 		Select("movies.id AS id, movies.title AS title, movies.release_year AS release_year, movies.director AS director, user_movies.status AS status, user_movies.rating AS rating, user_movies.notes AS notes, user_movies.created_at AS created_at, user_movies.updated_at AS updated_at").
 		Joins("JOIN movies ON movies.id = user_movies.movie_id").
-		Where("user_movies.user_id = ?", userID)
+		Where("user_movies.user_id = ?", idgen.Arg(userID))
 }
 
 func (m *Module) listUserMovies(w http.ResponseWriter, r *http.Request) {
@@ -469,7 +469,7 @@ func (m *Module) addMovieToList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var movie Movie
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&movie).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&movie).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Movie not found")
 		return
@@ -493,7 +493,7 @@ func (m *Module) addMovieToList(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: now,
 	}
 
-	err = m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id = ?", user.ID, id).First(&UserMovie{}).Error
+	err = m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).First(&UserMovie{}).Error
 	if err == nil {
 		respondError(w, http.StatusConflict, "Movie is already on your list")
 		return
@@ -551,7 +551,7 @@ func (m *Module) updateUserMovie(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserMovie{}).
-		Where("user_id = ? AND movie_id = ?", user.ID, id).
+		Where("user_id = ? AND movie_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"rating":     req.Rating,
@@ -583,7 +583,7 @@ func (m *Module) removeMovieFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id = ?", user.ID, id).Delete(&UserMovie{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).Delete(&UserMovie{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to remove movie from list: "+res.Error.Error())
 		return
@@ -611,7 +611,7 @@ func (m *Module) bulkRemoveFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id IN ?", user.ID, req.IDs).Delete(&UserMovie{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND movie_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).Delete(&UserMovie{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to bulk remove movies from list: "+res.Error.Error())
 		return
@@ -641,7 +641,7 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserMovie{}).
-		Where("user_id = ? AND movie_id IN ?", user.ID, req.IDs).
+		Where("user_id = ? AND movie_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -660,7 +660,7 @@ func (m *Module) bulkStatusMovies(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) respondUserMovie(w http.ResponseWriter, r *http.Request, userID string, movieID string, status int) {
 	var item MovieListItem
-	err := m.userMovieQuery(r, userID).Where("user_movies.movie_id = ?", movieID).Scan(&item).Error
+	err := m.userMovieQuery(r, userID).Where("user_movies.movie_id = ?", idgen.Arg(movieID)).Scan(&item).Error
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Database query error: "+err.Error())
 		return

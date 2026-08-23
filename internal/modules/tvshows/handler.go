@@ -168,10 +168,10 @@ func (m *Module) bulkDeleteTVShows(w http.ResponseWriter, r *http.Request) {
 
 	var deletedCount int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("tv_show_id IN ?", req.IDs).Delete(&UserTVShow{}).Error; err != nil {
+		if err := tx.Where("tv_show_id IN ?", idgen.Args(req.IDs)).Delete(&UserTVShow{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id IN ?", req.IDs).Delete(&TVShow{})
+		res := tx.Where("id IN ?", idgen.Args(req.IDs)).Delete(&TVShow{})
 		deletedCount = res.RowsAffected
 		return res.Error
 	})
@@ -237,7 +237,7 @@ func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var show TVShow
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&show).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&show).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
@@ -273,7 +273,7 @@ func (m *Module) updateTVShow(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&TVShow{}).
-		Where("id = ?", id).
+		Where("id = ?", idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"title":          req.Title,
 			"total_episodes": req.TotalEpisodes,
@@ -307,10 +307,10 @@ func (m *Module) deleteTVShow(w http.ResponseWriter, r *http.Request) {
 
 	var deleted int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("tv_show_id = ?", id).Delete(&UserTVShow{}).Error; err != nil {
+		if err := tx.Where("tv_show_id = ?", idgen.Arg(id)).Delete(&UserTVShow{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id = ?", id).Delete(&TVShow{})
+		res := tx.Where("id = ?", idgen.Arg(id)).Delete(&TVShow{})
 		deleted = res.RowsAffected
 		return res.Error
 	})
@@ -332,7 +332,7 @@ func (m *Module) userTVShowQuery(r *http.Request, userID string) *gorm.DB {
 		Table("user_tv_shows").
 		Select("tv_shows.id AS id, tv_shows.title AS title, tv_shows.total_episodes AS total_episodes, user_tv_shows.current_season AS current_season, user_tv_shows.current_episode AS current_episode, user_tv_shows.status AS status, user_tv_shows.rating AS rating, user_tv_shows.notes AS notes, user_tv_shows.created_at AS created_at, user_tv_shows.updated_at AS updated_at").
 		Joins("JOIN tv_shows ON tv_shows.id = user_tv_shows.tv_show_id").
-		Where("user_tv_shows.user_id = ?", userID)
+		Where("user_tv_shows.user_id = ?", idgen.Arg(userID))
 }
 
 func (m *Module) listUserTVShows(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +467,7 @@ func (m *Module) addTVShowToList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var show TVShow
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&show).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&show).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "TV show not found")
 		return
@@ -496,7 +496,7 @@ func (m *Module) addTVShowToList(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:      now,
 	}
 
-	err = m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id = ?", user.ID, id).First(&UserTVShow{}).Error
+	err = m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).First(&UserTVShow{}).Error
 	if err == nil {
 		respondError(w, http.StatusConflict, "TV show is already on your list")
 		return
@@ -556,7 +556,7 @@ func (m *Module) updateUserTVShow(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserTVShow{}).
-		Where("user_id = ? AND tv_show_id = ?", user.ID, id).
+		Where("user_id = ? AND tv_show_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"current_season":  req.CurrentSeason,
 			"current_episode": req.CurrentEpisode,
@@ -590,7 +590,7 @@ func (m *Module) removeTVShowFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id = ?", user.ID, id).Delete(&UserTVShow{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).Delete(&UserTVShow{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to remove TV show from list: "+res.Error.Error())
 		return
@@ -618,7 +618,7 @@ func (m *Module) bulkRemoveFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id IN ?", user.ID, req.IDs).Delete(&UserTVShow{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND tv_show_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).Delete(&UserTVShow{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to bulk remove TV shows from list: "+res.Error.Error())
 		return
@@ -648,7 +648,7 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserTVShow{}).
-		Where("user_id = ? AND tv_show_id IN ?", user.ID, req.IDs).
+		Where("user_id = ? AND tv_show_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -667,7 +667,7 @@ func (m *Module) bulkStatusTVShows(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) respondUserTVShow(w http.ResponseWriter, r *http.Request, userID string, showID string, status int) {
 	var item TVShowListItem
-	err := m.userTVShowQuery(r, userID).Where("user_tv_shows.tv_show_id = ?", showID).Scan(&item).Error
+	err := m.userTVShowQuery(r, userID).Where("user_tv_shows.tv_show_id = ?", idgen.Arg(showID)).Scan(&item).Error
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Database query error: "+err.Error())
 		return

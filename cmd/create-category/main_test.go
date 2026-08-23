@@ -75,6 +75,9 @@ func TestCategoryGenerator(t *testing.T) {
 	if strings.Contains(modelCode, "UserID    int64") || strings.Contains(handlerCode, "userID int64") {
 		t.Errorf("generated user ids should be unique strings, not serial ints")
 	}
+	if !strings.Contains(handlerCode, "idgen.Arg(user.ID)") || !strings.Contains(handlerCode, "idgen.Arg(userID)") {
+		t.Errorf("generated queries should bind user ids as UUIDs, not raw integers")
+	}
 
 	mysqlSQL := generateMigrationSQL(name, "mysql")
 	if strings.Contains(mysqlSQL, "AUTO_INCREMENT") || strings.Contains(mysqlSQL, "user_id INT") {

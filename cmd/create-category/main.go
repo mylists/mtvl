@@ -268,7 +268,7 @@ import (
 
 // {{STRUCT}} is a shared catalog item.
 type {{STRUCT}} struct {
-	ID        string    ` + "`json:\"id\" gorm:\"primaryKey;size:36;column:id\"`" + `
+	ID        string    ` + "`json:\"id\" gorm:\"primaryKey;type:uuid;size:36;column:id\"`" + `
 	Title     string    ` + "`json:\"title\" gorm:\"column:title;not null\"`" + `
 	CreatedAt time.Time ` + "`json:\"created_at\" gorm:\"column:created_at\"`" + `
 	UpdatedAt time.Time ` + "`json:\"updated_at\" gorm:\"column:updated_at\"`" + `
@@ -287,8 +287,8 @@ func (m *{{STRUCT}}) BeforeCreate(tx *gorm.DB) error {
 
 // User{{STRUCT}} links a user to a catalog item on their list.
 type User{{STRUCT}} struct {
-	UserID    string    ` + "`json:\"user_id\" gorm:\"primaryKey;size:36;column:user_id\"`" + `
-	ItemID    string    ` + "`json:\"{{ITEM_COL}}\" gorm:\"primaryKey;size:36;column:{{ITEM_COL}}\"`" + `
+	UserID    string    ` + "`json:\"user_id\" gorm:\"primaryKey;type:uuid;size:36;column:user_id\"`" + `
+	ItemID    string    ` + "`json:\"{{ITEM_COL}}\" gorm:\"primaryKey;type:uuid;size:36;column:{{ITEM_COL}}\"`" + `
 	Status    string    ` + "`json:\"status\" gorm:\"column:status;not null;default:'plan_to_watch'\"`" + `
 	Rating    int       ` + "`json:\"rating\" gorm:\"column:rating;default:0\"`" + `
 	Notes     string    ` + "`json:\"notes\" gorm:\"column:notes\"`" + `
@@ -485,10 +485,10 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 
 	var deletedCount int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("{{ITEM_COL}} IN ?", req.IDs).Delete(&User{{STRUCT}}{}).Error; err != nil {
+		if err := tx.Where("{{ITEM_COL}} IN ?", idgen.Args(req.IDs)).Delete(&User{{STRUCT}}{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id IN ?", req.IDs).Delete(&{{STRUCT}}{})
+		res := tx.Where("id IN ?", idgen.Args(req.IDs)).Delete(&{{STRUCT}}{})
 		deletedCount = res.RowsAffected
 		return res.Error
 	})
@@ -552,7 +552,7 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item {{STRUCT}}
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -587,7 +587,7 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&{{STRUCT}}{}).
-		Where("id = ?", id).
+		Where("id = ?", idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"title":      req.Title,
 			"updated_at": now,
@@ -620,10 +620,10 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 
 	var deleted int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("{{ITEM_COL}} = ?", id).Delete(&User{{STRUCT}}{}).Error; err != nil {
+		if err := tx.Where("{{ITEM_COL}} = ?", idgen.Arg(id)).Delete(&User{{STRUCT}}{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id = ?", id).Delete(&{{STRUCT}}{})
+		res := tx.Where("id = ?", idgen.Arg(id)).Delete(&{{STRUCT}}{})
 		deleted = res.RowsAffected
 		return res.Error
 	})
@@ -645,7 +645,7 @@ func (m *Module) userItemQuery(r *http.Request, userID string) *gorm.DB {
 		Table("user_{{NAME}}").
 		Select("{{NAME}}.id AS id, {{NAME}}.title AS title, user_{{NAME}}.status AS status, user_{{NAME}}.rating AS rating, user_{{NAME}}.notes AS notes, user_{{NAME}}.created_at AS created_at, user_{{NAME}}.updated_at AS updated_at").
 		Joins("JOIN {{NAME}} ON {{NAME}}.id = user_{{NAME}}.{{ITEM_COL}}").
-		Where("user_{{NAME}}.user_id = ?", userID)
+		Where("user_{{NAME}}.user_id = ?", idgen.Arg(userID))
 }
 
 func (m *Module) listUserItems(w http.ResponseWriter, r *http.Request) {
@@ -775,7 +775,7 @@ func (m *Module) addItemToList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item {{STRUCT}}
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -799,7 +799,7 @@ func (m *Module) addItemToList(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: now,
 	}
 
-	err = m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} = ?", user.ID, id).First(&User{{STRUCT}}{}).Error
+	err = m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} = ?", idgen.Arg(user.ID), idgen.Arg(id)).First(&User{{STRUCT}}{}).Error
 	if err == nil {
 		respondError(w, http.StatusConflict, "Item is already on your list")
 		return
@@ -857,7 +857,7 @@ func (m *Module) updateUserItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&User{{STRUCT}}{}).
-		Where("user_id = ? AND {{ITEM_COL}} = ?", user.ID, id).
+		Where("user_id = ? AND {{ITEM_COL}} = ?", idgen.Arg(user.ID), idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"rating":     req.Rating,
@@ -889,7 +889,7 @@ func (m *Module) removeItemFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} = ?", user.ID, id).Delete(&User{{STRUCT}}{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} = ?", idgen.Arg(user.ID), idgen.Arg(id)).Delete(&User{{STRUCT}}{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -917,7 +917,7 @@ func (m *Module) bulkRemoveFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} IN ?", user.ID, req.IDs).Delete(&User{{STRUCT}}{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND {{ITEM_COL}} IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).Delete(&User{{STRUCT}}{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -947,7 +947,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&User{{STRUCT}}{}).
-		Where("user_id = ? AND {{ITEM_COL}} IN ?", user.ID, req.IDs).
+		Where("user_id = ? AND {{ITEM_COL}} IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -966,7 +966,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID string, itemID string, status int) {
 	var item {{STRUCT}}ListItem
-	err := m.userItemQuery(r, userID).Where("user_{{NAME}}.{{ITEM_COL}} = ?", itemID).Scan(&item).Error
+	err := m.userItemQuery(r, userID).Where("user_{{NAME}}.{{ITEM_COL}} = ?", idgen.Arg(itemID)).Scan(&item).Error
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -21,3 +21,18 @@ func TestParseRejectsIncrementalIDs(t *testing.T) {
 		t.Fatal("expected empty id to be rejected")
 	}
 }
+
+func TestArgBindsUUIDNotInteger(t *testing.T) {
+	id := New()
+	arg := Arg(id)
+	parsed, ok := arg.(interface{ String() string })
+	if !ok || parsed.String() != id {
+		t.Fatalf("expected uuid.UUID argument, got %T %v", arg, arg)
+	}
+	if _, isInt := arg.(int); isInt {
+		t.Fatal("uuid query args must not be integers")
+	}
+	if _, isInt64 := arg.(int64); isInt64 {
+		t.Fatal("uuid query args must not be integers")
+	}
+}

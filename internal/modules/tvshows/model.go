@@ -9,7 +9,7 @@ import (
 
 // TVShow is a shared catalog item.
 type TVShow struct {
-	ID            string    `json:"id" gorm:"primaryKey;size:36;column:id"`
+	ID            string    `json:"id" gorm:"primaryKey;type:uuid;size:36;column:id"`
 	Title         string    `json:"title" gorm:"column:title;not null"`
 	TotalEpisodes int       `json:"total_episodes" gorm:"column:total_episodes"`
 	CreatedAt     time.Time `json:"created_at" gorm:"column:created_at"`
@@ -29,8 +29,8 @@ func (m *TVShow) BeforeCreate(tx *gorm.DB) error {
 
 // UserTVShow links a user to a catalog TV show on their list.
 type UserTVShow struct {
-	UserID         string    `json:"user_id" gorm:"primaryKey;size:36;column:user_id"`
-	TVShowID       string    `json:"tv_show_id" gorm:"primaryKey;size:36;column:tv_show_id"`
+	UserID         string    `json:"user_id" gorm:"primaryKey;type:uuid;size:36;column:user_id"`
+	TVShowID       string    `json:"tv_show_id" gorm:"primaryKey;type:uuid;size:36;column:tv_show_id"`
 	CurrentSeason  int       `json:"current_season" gorm:"column:current_season"`
 	CurrentEpisode int       `json:"current_episode" gorm:"column:current_episode"`
 	Status         string    `json:"status" gorm:"column:status;not null;default:'plan_to_watch'"`

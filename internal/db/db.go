@@ -17,7 +17,12 @@ func OpenDB(driver, dsn string) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
 	if driver == "postgres" || driver == "postgresql" {
-		dialector = postgres.Open(dsn)
+		// Simple protocol avoids prepared-statement type mismatches
+		// (uuid = integer / uuid = text) when binding UUID columns.
+		dialector = postgres.New(postgres.Config{
+			DSN:                  dsn,
+			PreferSimpleProtocol: true,
+		})
 	} else if driver == "mysql" {
 		dialector = mysql.Open(dsn)
 	} else {

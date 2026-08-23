@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,7 +17,7 @@ import (
 
 // UserModel represents the users table structure for GORM.
 type UserModel struct {
-	ID           string    `gorm:"primaryKey;size:36;column:id"`
+	ID           string    `gorm:"primaryKey;type:uuid;size:36;column:id"`
 	Username     string    `gorm:"uniqueIndex;not null;column:username"`
 	Email        string    `gorm:"uniqueIndex;not null;column:email"`
 	PasswordHash string    `gorm:"column:password_hash;not null"`
@@ -40,11 +42,40 @@ type JWTAuthProvider struct {
 	tokenTTL  time.Duration
 }
 
+// TokenUserID accepts UUID strings and legacy numeric user ids in JWTs.
+type TokenUserID string
+
+func (id *TokenUserID) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		*id = ""
+		return nil
+	}
+	if data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*id = TokenUserID(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	*id = TokenUserID(n.String())
+	return nil
+}
+
+func (id TokenUserID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(id))
+}
+
 // Claims defines standard JWT claims with User info.
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	UserID   TokenUserID `json:"user_id"`
+	Username string      `json:"username"`
+	Email    string      `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -142,10 +173,36 @@ func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (
 		return nil, ErrInvalidToken
 	}
 
+	userID := string(claims.UserID)
+	if p.db == nil {
+		return &User{
+			ID:       userID,
+			Username: claims.Username,
+			Email:    claims.Email,
+		}, nil
+	}
+
+	var u UserModel
+	q := p.db.WithContext(ctx)
+	if id, ok := idgen.Parse(userID); ok {
+		err = q.Where("id = ?", idgen.Arg(id)).First(&u).Error
+	} else if claims.Username != "" {
+		// Legacy tokens still carry serial integer user ids.
+		err = q.Where("username = ?", claims.Username).First(&u).Error
+	} else {
+		return nil, ErrInvalidToken
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrInvalidToken
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to load user: %w", err)
+	}
+
 	return &User{
-		ID:       claims.UserID,
-		Username: claims.Username,
-		Email:    claims.Email,
+		ID:        u.ID,
+		Username:  u.Username,
+		Email:     u.Email,
+		CreatedAt: u.CreatedAt,
 	}, nil
 }
 
@@ -158,7 +215,7 @@ func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID string, usernam
 		return nil, fmt.Errorf("username and email cannot be empty")
 	}
 
-	res := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", userID).Updates(map[string]interface{}{
+	res := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", idgen.Arg(userID)).Updates(map[string]interface{}{
 		"username": username,
 		"email":    email,
 	})
@@ -170,7 +227,7 @@ func (p *JWTAuthProvider) UpdateUser(ctx context.Context, userID string, usernam
 	}
 
 	var u UserModel
-	if err := p.db.WithContext(ctx).Where("id = ?", userID).First(&u).Error; err != nil {
+	if err := p.db.WithContext(ctx).Where("id = ?", idgen.Arg(userID)).First(&u).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
@@ -195,7 +252,7 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID string, old
 	}
 
 	var u UserModel
-	err := p.db.WithContext(ctx).Select("id", "password_hash").Where("id = ?", userID).First(&u).Error
+	err := p.db.WithContext(ctx).Select("id", "password_hash").Where("id = ?", idgen.Arg(userID)).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrUserNotFound
 	} else if err != nil {
@@ -211,7 +268,7 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID string, old
 		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
-	if err := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", userID).Update("password_hash", string(newHash)).Error; err != nil {
+	if err := p.db.WithContext(ctx).Model(&UserModel{}).Where("id = ?", idgen.Arg(userID)).Update("password_hash", string(newHash)).Error; err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -221,7 +278,7 @@ func (p *JWTAuthProvider) ChangePassword(ctx context.Context, userID string, old
 // DeleteUser deletes the user account. Shared category items are left in place; list links cascade away.
 func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID string) error {
 	err := p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Where("id = ?", userID).Delete(&UserModel{})
+		res := tx.Where("id = ?", idgen.Arg(userID)).Delete(&UserModel{})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -244,7 +301,7 @@ func (p *JWTAuthProvider) DeleteUser(ctx context.Context, userID string) error {
 func (p *JWTAuthProvider) generateToken(user *User) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:   user.ID,
+		UserID:   TokenUserID(user.ID),
 		Username: user.Username,
 		Email:    user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{

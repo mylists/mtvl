@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"mtvl/internal/auth"
+	"mtvl/internal/idgen"
 	"mtvl/internal/modules/books"
 	"mtvl/internal/modules/movies"
 	"mtvl/internal/modules/tvshows"
@@ -57,7 +58,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	var movieStat StatResult
 	_ = s.db.WithContext(ctx).Model(&movies.UserMovie{}).
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
 		Scan(&movieStat)
 
@@ -65,7 +66,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	var movieCounts []StatusCount
 	if err := s.db.WithContext(ctx).Model(&movies.UserMovie{}).
 		Select("status, COUNT(*) as count").
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Group("status").
 		Find(&movieCounts).Error; err == nil {
 		for _, c := range movieCounts {
@@ -75,7 +76,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	var tvStat StatResult
 	_ = s.db.WithContext(ctx).Model(&tvshows.UserTVShow{}).
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
 		Scan(&tvStat)
 
@@ -83,7 +84,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	var tvCounts []StatusCount
 	if err := s.db.WithContext(ctx).Model(&tvshows.UserTVShow{}).
 		Select("status, COUNT(*) as count").
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Group("status").
 		Find(&tvCounts).Error; err == nil {
 		for _, c := range tvCounts {
@@ -93,7 +94,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	var bookStat StatResult
 	_ = s.db.WithContext(ctx).Model(&books.UserBook{}).
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Select("COUNT(*) as count, COALESCE(AVG(rating), 0) as avg").
 		Scan(&bookStat)
 
@@ -101,7 +102,7 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	var bookCounts []StatusCount
 	if err := s.db.WithContext(ctx).Model(&books.UserBook{}).
 		Select("status, COUNT(*) as count").
-		Where("user_id = ?", user.ID).
+		Where("user_id = ?", idgen.Arg(user.ID)).
 		Group("status").
 		Find(&bookCounts).Error; err == nil {
 		for _, c := range bookCounts {
@@ -189,13 +190,13 @@ func (s *ServiceHandler) ExportUserData(w http.ResponseWriter, r *http.Request) 
 	_ = s.db.WithContext(ctx).Order("id ASC").Find(&bookList).Error
 
 	userMovies := make([]movies.UserMovie, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("movie_id ASC").Find(&userMovies).Error
+	_ = s.db.WithContext(ctx).Where("user_id = ?", idgen.Arg(user.ID)).Order("movie_id ASC").Find(&userMovies).Error
 
 	userTVShows := make([]tvshows.UserTVShow, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("tv_show_id ASC").Find(&userTVShows).Error
+	_ = s.db.WithContext(ctx).Where("user_id = ?", idgen.Arg(user.ID)).Order("tv_show_id ASC").Find(&userTVShows).Error
 
 	userBooks := make([]books.UserBook, 0)
-	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Order("book_id ASC").Find(&userBooks).Error
+	_ = s.db.WithContext(ctx).Where("user_id = ?", idgen.Arg(user.ID)).Order("book_id ASC").Find(&userBooks).Error
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"version":     "1.0",
@@ -261,13 +262,13 @@ func (s *ServiceHandler) ImportUserData(w http.ResponseWriter, r *http.Request) 
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if req.Overwrite {
-			if err := tx.Where("user_id = ?", user.ID).Delete(&movies.UserMovie{}).Error; err != nil {
+			if err := tx.Where("user_id = ?", idgen.Arg(user.ID)).Delete(&movies.UserMovie{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("user_id = ?", user.ID).Delete(&tvshows.UserTVShow{}).Error; err != nil {
+			if err := tx.Where("user_id = ?", idgen.Arg(user.ID)).Delete(&tvshows.UserTVShow{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("user_id = ?", user.ID).Delete(&books.UserBook{}).Error; err != nil {
+			if err := tx.Where("user_id = ?", idgen.Arg(user.ID)).Delete(&books.UserBook{}).Error; err != nil {
 				return err
 			}
 		}
@@ -444,7 +445,7 @@ func findOrCreateBook(tx *gorm.DB, title string, now time.Time) (*books.Book, er
 
 func upsertUserMovie(tx *gorm.DB, link *movies.UserMovie) error {
 	var existing movies.UserMovie
-	err := tx.Where("user_id = ? AND movie_id = ?", link.UserID, link.MovieID).First(&existing).Error
+	err := tx.Where("user_id = ? AND movie_id = ?", idgen.Arg(link.UserID), idgen.Arg(link.MovieID)).First(&existing).Error
 	if err == nil {
 		return tx.Model(&existing).Updates(map[string]interface{}{
 			"status":     link.Status,
@@ -461,7 +462,7 @@ func upsertUserMovie(tx *gorm.DB, link *movies.UserMovie) error {
 
 func upsertUserTVShow(tx *gorm.DB, link *tvshows.UserTVShow) error {
 	var existing tvshows.UserTVShow
-	err := tx.Where("user_id = ? AND tv_show_id = ?", link.UserID, link.TVShowID).First(&existing).Error
+	err := tx.Where("user_id = ? AND tv_show_id = ?", idgen.Arg(link.UserID), idgen.Arg(link.TVShowID)).First(&existing).Error
 	if err == nil {
 		return tx.Model(&existing).Updates(map[string]interface{}{
 			"current_season":  link.CurrentSeason,
@@ -480,7 +481,7 @@ func upsertUserTVShow(tx *gorm.DB, link *tvshows.UserTVShow) error {
 
 func upsertUserBook(tx *gorm.DB, link *books.UserBook) error {
 	var existing books.UserBook
-	err := tx.Where("user_id = ? AND book_id = ?", link.UserID, link.BookID).First(&existing).Error
+	err := tx.Where("user_id = ? AND book_id = ?", idgen.Arg(link.UserID), idgen.Arg(link.BookID)).First(&existing).Error
 	if err == nil {
 		return tx.Model(&existing).Updates(map[string]interface{}{
 			"status":     link.Status,

@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"mtvl/internal/idgen"
@@ -102,6 +104,39 @@ func TestJWTAuthProviderUpdateAndChangePassword(t *testing.T) {
 	err = provider.ChangePassword(ctx, u.ID, "oldpass", "newpass")
 	if err != nil {
 		t.Fatalf("failed to change password: %v", err)
+	}
+}
+
+func TestVerifyTokenResolvesLegacyNumericUserID(t *testing.T) {
+	db := setupTestGormDB(t)
+	provider := NewJWTAuthProvider(db, "test-secret")
+	ctx := context.Background()
+
+	user, err := provider.RegisterUser(ctx, "testuser", "test@example.com", "password123")
+	if err != nil {
+		t.Fatalf("failed to register user: %v", err)
+	}
+
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id":  1,
+		"username": "testuser",
+		"email":    "test@example.com",
+		"exp":      time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := tok.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign legacy token: %v", err)
+	}
+
+	verified, err := provider.VerifyToken(ctx, tokenStr)
+	if err != nil {
+		t.Fatalf("expected legacy numeric user_id token to resolve: %v", err)
+	}
+	if verified.ID != user.ID {
+		t.Fatalf("expected resolved uuid %q, got %q", user.ID, verified.ID)
+	}
+	if _, ok := idgen.Parse(verified.ID); !ok {
+		t.Fatalf("resolved id must be a uuid, got %q", verified.ID)
 	}
 }
 

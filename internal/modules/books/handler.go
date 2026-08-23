@@ -165,10 +165,10 @@ func (m *Module) bulkDeleteItems(w http.ResponseWriter, r *http.Request) {
 
 	var deletedCount int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("book_id IN ?", req.IDs).Delete(&UserBook{}).Error; err != nil {
+		if err := tx.Where("book_id IN ?", idgen.Args(req.IDs)).Delete(&UserBook{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id IN ?", req.IDs).Delete(&Book{})
+		res := tx.Where("id IN ?", idgen.Args(req.IDs)).Delete(&Book{})
 		deletedCount = res.RowsAffected
 		return res.Error
 	})
@@ -232,7 +232,7 @@ func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item Book
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -267,7 +267,7 @@ func (m *Module) updateItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&Book{}).
-		Where("id = ?", id).
+		Where("id = ?", idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"title":      req.Title,
 			"updated_at": now,
@@ -300,10 +300,10 @@ func (m *Module) deleteItem(w http.ResponseWriter, r *http.Request) {
 
 	var deleted int64
 	err := m.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("book_id = ?", id).Delete(&UserBook{}).Error; err != nil {
+		if err := tx.Where("book_id = ?", idgen.Arg(id)).Delete(&UserBook{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id = ?", id).Delete(&Book{})
+		res := tx.Where("id = ?", idgen.Arg(id)).Delete(&Book{})
 		deleted = res.RowsAffected
 		return res.Error
 	})
@@ -325,7 +325,7 @@ func (m *Module) userBookQuery(r *http.Request, userID string) *gorm.DB {
 		Table("user_books").
 		Select("books.id AS id, books.title AS title, user_books.status AS status, user_books.rating AS rating, user_books.notes AS notes, user_books.created_at AS created_at, user_books.updated_at AS updated_at").
 		Joins("JOIN books ON books.id = user_books.book_id").
-		Where("user_books.user_id = ?", userID)
+		Where("user_books.user_id = ?", idgen.Arg(userID))
 }
 
 func (m *Module) listUserItems(w http.ResponseWriter, r *http.Request) {
@@ -455,7 +455,7 @@ func (m *Module) addItemToList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var item Book
-	err := m.db.WithContext(r.Context()).Where("id = ?", id).First(&item).Error
+	err := m.db.WithContext(r.Context()).Where("id = ?", idgen.Arg(id)).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		respondError(w, http.StatusNotFound, "Item not found")
 		return
@@ -479,7 +479,7 @@ func (m *Module) addItemToList(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: now,
 	}
 
-	err = m.db.WithContext(r.Context()).Where("user_id = ? AND book_id = ?", user.ID, id).First(&UserBook{}).Error
+	err = m.db.WithContext(r.Context()).Where("user_id = ? AND book_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).First(&UserBook{}).Error
 	if err == nil {
 		respondError(w, http.StatusConflict, "Book is already on your list")
 		return
@@ -537,7 +537,7 @@ func (m *Module) updateUserItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserBook{}).
-		Where("user_id = ? AND book_id = ?", user.ID, id).
+		Where("user_id = ? AND book_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"rating":     req.Rating,
@@ -569,7 +569,7 @@ func (m *Module) removeItemFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND book_id = ?", user.ID, id).Delete(&UserBook{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND book_id = ?", idgen.Arg(user.ID), idgen.Arg(id)).Delete(&UserBook{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -597,7 +597,7 @@ func (m *Module) bulkRemoveFromList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := m.db.WithContext(r.Context()).Where("user_id = ? AND book_id IN ?", user.ID, req.IDs).Delete(&UserBook{})
+	res := m.db.WithContext(r.Context()).Where("user_id = ? AND book_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).Delete(&UserBook{})
 	if res.Error != nil {
 		respondError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -627,7 +627,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	res := m.db.WithContext(r.Context()).Model(&UserBook{}).
-		Where("user_id = ? AND book_id IN ?", user.ID, req.IDs).
+		Where("user_id = ? AND book_id IN ?", idgen.Arg(user.ID), idgen.Args(req.IDs)).
 		Updates(map[string]interface{}{
 			"status":     req.Status,
 			"updated_at": now,
@@ -646,7 +646,7 @@ func (m *Module) bulkStatusItems(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) respondUserItem(w http.ResponseWriter, r *http.Request, userID string, bookID string, status int) {
 	var item BookListItem
-	err := m.userBookQuery(r, userID).Where("user_books.book_id = ?", bookID).Scan(&item).Error
+	err := m.userBookQuery(r, userID).Where("user_books.book_id = ?", idgen.Arg(bookID)).Scan(&item).Error
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
