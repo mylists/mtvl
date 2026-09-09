@@ -132,6 +132,37 @@ func TestMoviesSharedAcrossUsers(t *testing.T) {
 	}
 }
 
+func TestMovieCatalogReadsArePublicAndWritesRequireAuthentication(t *testing.T) {
+	db, _ := setupTestDB(t)
+	created := Movie{ID: idgen.New(), Title: "Public Catalogue Movie"}
+	if err := db.Create(&created).Error; err != nil {
+		t.Fatalf("seed movie: %v", err)
+	}
+
+	mod := NewModule(db)
+	router := chi.NewRouter()
+	denied := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+		})
+	}
+	mod.RegisterRoutes(router, denied)
+
+	for _, path := range []string{"/api/v1/movies?q=catalogue", "/api/v1/movies/" + created.ID} {
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+		if rr.Code != http.StatusOK {
+			t.Errorf("GET %s: expected public 200, got %d: %s", path, rr.Code, rr.Body.String())
+		}
+	}
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/movies", bytes.NewBufferString(`{"title":"New Movie"}`)))
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/v1/movies: expected 401, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestMoviesUserListIsolation(t *testing.T) {
 	db, creator := setupTestDB(t)
 	other := &auth.User{ID: idgen.New(), Username: "other", Email: "other@example.com"}

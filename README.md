@@ -10,7 +10,7 @@
 - **Multi-Database Support**: Driven by Goose migrations, supporting **PostgreSQL** and **MySQL**.
 - **Pluggable Auth Subsystem**: Clean `auth.AuthProvider` interface with built-in JWT authentication + standard adapter for external providers (Auth0, Clerk, Supabase, Keycloak, or custom OIDC).
 - **Dynamic Category Discovery**: Central registry automatically exposes active modules via GET `/api/v1/categories`.
-- **Shared Categories**: Movies, TV shows, books, and any new category are one shared catalog. Every authenticated user sees the same items and the same IDs.
+- **Public Shared Catalogs**: Movies, TV shows, books, and any new category are searchable read-only catalogs. Anyone can browse them; authentication is required to create, edit, or add catalog items to a personal list.
 
 ---
 
@@ -99,8 +99,12 @@ func (m *Module) Info() core.CategoryInfo {
 
 func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Handler) {
     r.Route("/api/v1/books", func(sub chi.Router) {
-        sub.Use(authMw)
-        // Attach CRUD handlers...
+        sub.Get("/", m.listItems) // public catalog search
+        sub.Get("/{id}", m.getItem)
+        sub.Group(func(protected chi.Router) {
+            protected.Use(authMw)
+            // Attach catalog writes and personal-list handlers...
+        })
     })
 }
 ```
@@ -129,13 +133,19 @@ That's it! The new category will automatically show up in `/api/v1/categories` a
 | `POST` | `/api/v1/auth/login` | Login user & get JWT token | No |
 | `GET` | `/api/v1/auth/me` | Get current user info | Yes |
 | `GET` | `/api/v1/categories` | Discover registered tracking modules | No |
-| `GET` | `/api/v1/movies` | List movies (shared) | Yes |
+| `GET` | `/api/v1/search?q={query}` | Search the public catalog across all categories | No |
+| `GET` | `/api/v1/movies` | Search/list public movie catalog (`q`, pagination supported) | No |
 | `POST` | `/api/v1/movies` | Create movie record | Yes |
-| `GET` | `/api/v1/movies/{id}` | Get single movie | Yes |
+| `GET` | `/api/v1/movies/{id}` | Get single movie | No |
 | `PUT` | `/api/v1/movies/{id}` | Update movie | Yes |
 | `DELETE` | `/api/v1/movies/{id}` | Delete movie | Yes |
-| `GET` | `/api/v1/tvshows` | List TV shows (shared) | Yes |
+| `GET` | `/api/v1/tvshows` | Search/list public TV show catalog | No |
 | `POST` | `/api/v1/tvshows` | Create TV show record | Yes |
-| `GET` | `/api/v1/tvshows/{id}` | Get single TV show | Yes |
+| `GET` | `/api/v1/tvshows/{id}` | Get single TV show | No |
 | `PUT` | `/api/v1/tvshows/{id}` | Update TV show | Yes |
 | `DELETE` | `/api/v1/tvshows/{id}` | Delete TV show | Yes |
+| `GET` | `/api/v1/books` | Search/list public book catalog | No |
+| `POST` | `/api/v1/books` | Create book record when it is absent from the catalog | Yes |
+| `GET` | `/api/v1/books/{id}` | Get single book | No |
+| `PUT` | `/api/v1/books/{id}` | Update book | Yes |
+| `DELETE` | `/api/v1/books/{id}` | Delete book | Yes |

@@ -26,11 +26,14 @@ func NewServiceHandler(db *gorm.DB) *ServiceHandler {
 }
 
 func (s *ServiceHandler) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Handler) {
+	// Search operates only on the shared catalogs, so it is safe to expose for
+	// discovery alongside the category-specific public catalog endpoints.
+	r.Get("/api/v1/search", s.GlobalSearch)
+
 	r.Group(func(sub chi.Router) {
 		sub.Use(authMw)
 
 		sub.Get("/api/v1/stats", s.GetStats)
-		sub.Get("/api/v1/search", s.GlobalSearch)
 		sub.Get("/api/v1/export", s.ExportUserData)
 		sub.Post("/api/v1/import", s.ImportUserData)
 	})
@@ -136,11 +139,6 @@ func (s *ServiceHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 // GlobalSearch searches shared catalog titles across movies, tv shows, and books.
 func (s *ServiceHandler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	queryTerm := strings.TrimSpace(r.URL.Query().Get("q"))
 	if queryTerm == "" {
 		respondError(w, http.StatusBadRequest, "Query parameter 'q' is required")

@@ -36,33 +36,31 @@ func (m *Module) Info() core.CategoryInfo {
 
 func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Handler) {
 	r.Route("/api/v1/movies", func(sub chi.Router) {
-		sub.Use(authMw)
-
+		// The shared catalog is deliberately public so visitors can search and
+		// select an existing movie before deciding to add it to a personal list.
 		sub.Get("/", m.listMovies)
-		sub.Post("/", m.createMovie)
-		sub.Post("/bulk-delete", m.bulkDeleteMovies)
-
-		sub.Get("/list", m.listUserMovies)
-		sub.Post("/list", m.addMovieToList)
-		sub.Post("/list/bulk-delete", m.bulkRemoveFromList)
-		sub.Post("/list/bulk-status", m.bulkStatusMovies)
-		sub.Post("/bulk-status", m.bulkStatusMovies)
-		sub.Get("/list/{id}", m.getUserMovie)
-		sub.Put("/list/{id}", m.updateUserMovie)
-		sub.Delete("/list/{id}", m.removeMovieFromList)
-
 		sub.Get("/{id}", m.getMovie)
-		sub.Put("/{id}", m.updateMovie)
-		sub.Delete("/{id}", m.deleteMovie)
+
+		sub.Group(func(protected chi.Router) {
+			protected.Use(authMw)
+			protected.Post("/", m.createMovie)
+			protected.Post("/bulk-delete", m.bulkDeleteMovies)
+
+			protected.Get("/list", m.listUserMovies)
+			protected.Post("/list", m.addMovieToList)
+			protected.Post("/list/bulk-delete", m.bulkRemoveFromList)
+			protected.Post("/list/bulk-status", m.bulkStatusMovies)
+			protected.Post("/bulk-status", m.bulkStatusMovies)
+			protected.Get("/list/{id}", m.getUserMovie)
+			protected.Put("/list/{id}", m.updateUserMovie)
+			protected.Delete("/list/{id}", m.removeMovieFromList)
+			protected.Put("/{id}", m.updateMovie)
+			protected.Delete("/{id}", m.deleteMovie)
+		})
 	})
 }
 
 func (m *Module) listMovies(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	qParam := strings.TrimSpace(r.URL.Query().Get("q"))
 	sortByParam := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 	orderParam := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("order")))
@@ -228,11 +226,6 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getMovie(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	id, ok := idgen.Parse(chi.URLParam(r, "id"))
 	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid movie ID")

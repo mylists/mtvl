@@ -177,8 +177,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/movies": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared movie catalog items with search, sorting, and pagination",
-					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"summary":  "List public movie catalog items with search, sorting, and pagination",
 					"parameters": []map[string]interface{}{
 						{"name": "q", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Search term"},
 						{"name": "sort_by", "in": "query", "schema": map[string]string{"type": "string"}, "description": "Column to sort by"},
@@ -234,8 +233,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/tvshows": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared TV show catalog items with search, sorting, and pagination",
-					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"summary":  "List public TV show catalog items with search, sorting, and pagination",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of TV shows"},
 					},
@@ -250,8 +248,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/books": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "List shared book catalog items with search, sorting, and pagination",
-					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"summary":  "List public book catalog items with search, sorting, and pagination",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "List or paginated list of books"},
 					},
@@ -275,8 +272,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 			"/api/v1/search": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary":  "Global cross-category search",
-					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"summary":  "Public global cross-category catalog search",
 					"parameters": []map[string]interface{}{
 						{"name": "q", "in": "query", "required": true, "schema": map[string]string{"type": "string"}, "description": "Search keyword"},
 					},

@@ -36,33 +36,28 @@ func (m *Module) Info() core.CategoryInfo {
 
 func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Handler) {
 	r.Route("/api/v1/tvshows", func(sub chi.Router) {
-		sub.Use(authMw)
-
 		sub.Get("/", m.listTVShows)
-		sub.Post("/", m.createTVShow)
-		sub.Post("/bulk-delete", m.bulkDeleteTVShows)
-
-		sub.Get("/list", m.listUserTVShows)
-		sub.Post("/list", m.addTVShowToList)
-		sub.Post("/list/bulk-delete", m.bulkRemoveFromList)
-		sub.Post("/list/bulk-status", m.bulkStatusTVShows)
-		sub.Post("/bulk-status", m.bulkStatusTVShows)
-		sub.Get("/list/{id}", m.getUserTVShow)
-		sub.Put("/list/{id}", m.updateUserTVShow)
-		sub.Delete("/list/{id}", m.removeTVShowFromList)
-
 		sub.Get("/{id}", m.getTVShow)
-		sub.Put("/{id}", m.updateTVShow)
-		sub.Delete("/{id}", m.deleteTVShow)
+
+		sub.Group(func(protected chi.Router) {
+			protected.Use(authMw)
+			protected.Post("/", m.createTVShow)
+			protected.Post("/bulk-delete", m.bulkDeleteTVShows)
+			protected.Get("/list", m.listUserTVShows)
+			protected.Post("/list", m.addTVShowToList)
+			protected.Post("/list/bulk-delete", m.bulkRemoveFromList)
+			protected.Post("/list/bulk-status", m.bulkStatusTVShows)
+			protected.Post("/bulk-status", m.bulkStatusTVShows)
+			protected.Get("/list/{id}", m.getUserTVShow)
+			protected.Put("/list/{id}", m.updateUserTVShow)
+			protected.Delete("/list/{id}", m.removeTVShowFromList)
+			protected.Put("/{id}", m.updateTVShow)
+			protected.Delete("/{id}", m.deleteTVShow)
+		})
 	})
 }
 
 func (m *Module) listTVShows(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	qParam := strings.TrimSpace(r.URL.Query().Get("q"))
 	sortByParam := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 	orderParam := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("order")))
@@ -225,11 +220,6 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getTVShow(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	id, ok := idgen.Parse(chi.URLParam(r, "id"))
 	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid TV show ID")

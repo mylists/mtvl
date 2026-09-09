@@ -354,33 +354,29 @@ func (m *Module) Info() core.CategoryInfo {
 
 func (m *Module) RegisterRoutes(r chi.Router, authMw func(http.Handler) http.Handler) {
 	r.Route("{{ENDPOINT}}", func(sub chi.Router) {
-		sub.Use(authMw)
-
+		// Catalog discovery is public; personal lists and all writes require auth.
 		sub.Get("/", m.listItems)
-		sub.Post("/", m.createItem)
-		sub.Post("/bulk-delete", m.bulkDeleteItems)
-
-		sub.Get("/list", m.listUserItems)
-		sub.Post("/list", m.addItemToList)
-		sub.Post("/list/bulk-delete", m.bulkRemoveFromList)
-		sub.Post("/list/bulk-status", m.bulkStatusItems)
-		sub.Post("/bulk-status", m.bulkStatusItems)
-		sub.Get("/list/{id}", m.getUserItem)
-		sub.Put("/list/{id}", m.updateUserItem)
-		sub.Delete("/list/{id}", m.removeItemFromList)
-
 		sub.Get("/{id}", m.getItem)
-		sub.Put("/{id}", m.updateItem)
-		sub.Delete("/{id}", m.deleteItem)
+
+		sub.Group(func(protected chi.Router) {
+			protected.Use(authMw)
+			protected.Post("/", m.createItem)
+			protected.Post("/bulk-delete", m.bulkDeleteItems)
+			protected.Get("/list", m.listUserItems)
+			protected.Post("/list", m.addItemToList)
+			protected.Post("/list/bulk-delete", m.bulkRemoveFromList)
+			protected.Post("/list/bulk-status", m.bulkStatusItems)
+			protected.Post("/bulk-status", m.bulkStatusItems)
+			protected.Get("/list/{id}", m.getUserItem)
+			protected.Put("/list/{id}", m.updateUserItem)
+			protected.Delete("/list/{id}", m.removeItemFromList)
+			protected.Put("/{id}", m.updateItem)
+			protected.Delete("/{id}", m.deleteItem)
+		})
 	})
 }
 
 func (m *Module) listItems(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	qParam := strings.TrimSpace(r.URL.Query().Get("q"))
 	sortByParam := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 	orderParam := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("order")))
@@ -540,11 +536,6 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) getItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-
 	id, ok := idgen.Parse(chi.URLParam(r, "id"))
 	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid ID")

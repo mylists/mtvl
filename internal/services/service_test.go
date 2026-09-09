@@ -51,3 +51,31 @@ func TestGetStatsUsesUUIDUserIDs(t *testing.T) {
 		t.Fatalf("expected total_items in stats payload, got %+v", payload)
 	}
 }
+
+func TestGlobalSearchIsPublic(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&movies.Movie{}, &tvshows.TVShow{}, &books.Book{}); err != nil {
+		t.Fatalf("migrate database: %v", err)
+	}
+	if err := db.Create(&movies.Movie{ID: idgen.New(), Title: "Public Search Result"}).Error; err != nil {
+		t.Fatalf("seed movie: %v", err)
+	}
+
+	handler := NewServiceHandler(db)
+	router := chi.NewRouter()
+	denied := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+		})
+	}
+	handler.RegisterRoutes(router, denied)
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/search?q=public", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected public search to return 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
