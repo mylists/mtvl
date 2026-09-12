@@ -175,6 +175,50 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 			},
+			"/api/v1/auth/tokens": map[string]interface{}{
+				"get": map[string]interface{}{
+					"summary":  "List user API tokens",
+					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "List of active API tokens"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"post": map[string]interface{}{
+					"summary":  "Create 128-character API token tied to current user",
+					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"requestBody": map[string]interface{}{
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"name": map[string]interface{}{"type": "string", "description": "Token label / name"},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"201": map[string]interface{}{"description": "API token created"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/api/v1/auth/tokens/{id}": map[string]interface{}{
+				"delete": map[string]interface{}{
+					"summary":  "Revoke an API token",
+					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]string{"type": "string"}, "description": "Token ID or token string"},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "API token revoked"},
+						"404": map[string]interface{}{"description": "Token not found"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
 			"/api/v1/movies": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":  "List public movie catalog items with search, sorting, and pagination",

@@ -17,7 +17,7 @@ func setupTestGormDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&UserModel{}); err != nil {
+	if err := db.AutoMigrate(&UserModel{}, &APITokenModel{}); err != nil {
 		t.Fatalf("failed to migrate tables: %v", err)
 	}
 
@@ -82,6 +82,80 @@ func TestJWTAuthProviderAuthenticateUser(t *testing.T) {
 	}
 }
 
+func TestAPITokenLifecycle(t *testing.T) {
+	db := setupTestGormDB(t)
+	provider := NewJWTAuthProvider(db, "test-secret")
+	ctx := context.Background()
+
+	user, err := provider.RegisterUser(ctx, "apitokenuser", "api@example.com", "password123")
+	if err != nil {
+		t.Fatalf("failed to register user: %v", err)
+	}
+
+	// 1. Create API Token
+	apiToken, err := provider.CreateAPIToken(ctx, user.ID, "CI Runner")
+	if err != nil {
+		t.Fatalf("failed to create api token: %v", err)
+	}
+	if apiToken.UserID != user.ID {
+		t.Errorf("expected user_id %s, got %s", user.ID, apiToken.UserID)
+	}
+	if len(apiToken.Token) != 128 {
+		t.Fatalf("expected 128-character API token, got length %d (%s)", len(apiToken.Token), apiToken.Token)
+	}
+	if apiToken.Name != "CI Runner" {
+		t.Errorf("expected name 'CI Runner', got %s", apiToken.Name)
+	}
+
+	// 2. Verify with API Token
+	verified, err := provider.VerifyToken(ctx, apiToken.Token)
+	if err != nil {
+		t.Fatalf("failed to verify valid 128-char API token: %v", err)
+	}
+	if verified.ID != user.ID || verified.Username != "apitokenuser" {
+		t.Errorf("unexpected user from API token: %+v", verified)
+	}
+
+	// 3. List API Tokens
+	tokens, err := provider.ListAPITokens(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("failed to list tokens: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].ID != apiToken.ID {
+		t.Fatalf("expected 1 token in list, got %+v", tokens)
+	}
+
+	// 4. Cross-user isolation
+	other, _ := provider.RegisterUser(ctx, "otherapi", "otherapi@example.com", "pass")
+	otherTokens, err := provider.ListAPITokens(ctx, other.ID)
+	if err != nil {
+		t.Fatalf("failed to list other tokens: %v", err)
+	}
+	if len(otherTokens) != 0 {
+		t.Fatalf("expected 0 tokens for other user, got %+v", otherTokens)
+	}
+
+	// 5. Revoke API Token
+	if err := provider.RevokeAPIToken(ctx, user.ID, apiToken.ID); err != nil {
+		t.Fatalf("failed to revoke api token: %v", err)
+	}
+
+	// 6. Verify revoked token fails
+	_, err = provider.VerifyToken(ctx, apiToken.Token)
+	if err == nil {
+		t.Fatalf("expected verification to fail after token revocation, but succeeded")
+	}
+
+	// 7. Verify list is now empty
+	tokens, err = provider.ListAPITokens(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("failed to list tokens after revocation: %v", err)
+	}
+	if len(tokens) != 0 {
+		t.Fatalf("expected 0 tokens after revocation, got %+v", tokens)
+	}
+}
+
 func TestJWTAuthProviderUpdateAndChangePassword(t *testing.T) {
 	db := setupTestGormDB(t)
 
@@ -139,4 +213,3 @@ func TestVerifyTokenResolvesLegacyNumericUserID(t *testing.T) {
 		t.Fatalf("resolved id must be a uuid, got %q", verified.ID)
 	}
 }
-

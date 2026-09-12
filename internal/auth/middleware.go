@@ -1,31 +1,41 @@
 package auth
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 )
 
-// Middleware returns HTTP middleware enforcing authentication via AuthProvider.
+// Middleware returns an HTTP middleware enforcing authorization.
 func Middleware(provider AuthProvider) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				respondJSONError(w, http.StatusUnauthorized, "Missing Authorization header")
+			tokenString := ""
+
+			if authHeader != "" {
+				parts := strings.SplitN(authHeader, " ", 2)
+				if len(parts) == 2 && (parts[0] == "Bearer" || parts[0] == "token") {
+					tokenString = parts[1]
+				} else if len(parts) == 1 && len(parts[0]) == 128 {
+					tokenString = parts[0]
+				} else {
+					http.Error(w, `{"error":"Invalid Authorization header format"}`, http.StatusUnauthorized)
+					return
+				}
+			} else if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+				tokenString = apiKey
+			} else if apiToken := r.Header.Get("X-API-Token"); apiToken != "" {
+				tokenString = apiToken
+			}
+
+			if tokenString == "" {
+				http.Error(w, `{"error":"Missing Authorization header"}`, http.StatusUnauthorized)
 				return
 			}
 
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				respondJSONError(w, http.StatusUnauthorized, "Invalid Authorization header format. Expected 'Bearer <token>'")
-				return
-			}
-
-			tokenStr := parts[1]
-			user, err := provider.VerifyToken(r.Context(), tokenStr)
+			user, err := provider.VerifyToken(r.Context(), tokenString)
 			if err != nil {
-				respondJSONError(w, http.StatusUnauthorized, "Invalid or expired authorization token")
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusUnauthorized)
 				return
 			}
 
@@ -33,12 +43,4 @@ func Middleware(provider AuthProvider) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-}
-
-func respondJSONError(w http.ResponseWriter, statusCode int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error": message,
-	})
 }

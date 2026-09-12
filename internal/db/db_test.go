@@ -71,6 +71,28 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 			t.Errorf("expected mysql unique index on %s (title)", table)
 		}
 	}
+
+	pgTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00010_api_tokens.sql"))
+	if err != nil {
+		t.Fatalf("failed to read postgres api tokens migration: %v", err)
+	}
+	if !strings.Contains(upSection(string(pgTokens)), "VARCHAR(128)") || !strings.Contains(upSection(string(pgTokens)), "api_tokens") {
+		t.Errorf("expected postgres 128-char api tokens table")
+	}
+	if !strings.Contains(upSection(string(pgTokens)), "idx_api_tokens_token") {
+		t.Errorf("expected postgres api tokens unique index")
+	}
+
+	mysqlTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00010_api_tokens.sql"))
+	if err != nil {
+		t.Fatalf("failed to read mysql api tokens migration: %v", err)
+	}
+	if !strings.Contains(upSection(string(mysqlTokens)), "VARCHAR(128)") || !strings.Contains(upSection(string(mysqlTokens)), "api_tokens") {
+		t.Errorf("expected mysql 128-char api tokens table")
+	}
+	if !strings.Contains(upSection(string(mysqlTokens)), "idx_api_tokens_token") {
+		t.Errorf("expected mysql api tokens unique index")
+	}
 }
 
 func upSection(sql string) string {

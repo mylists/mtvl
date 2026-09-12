@@ -60,3 +60,14 @@ func (e *ExternalAuthProvider) DeleteUser(ctx context.Context, userID string) er
 	return errors.New("account deletion handled by external auth provider portal")
 }
 
+func (e *ExternalAuthProvider) CreateAPIToken(ctx context.Context, userID string, name string) (*APIToken, error) {
+	return nil, errors.New("api token generation handled by external auth provider portal")
+}
+
+func (e *ExternalAuthProvider) ListAPITokens(ctx context.Context, userID string) ([]APIToken, error) {
+	return nil, errors.New("api token listing handled by external auth provider portal")
+}
+
+func (e *ExternalAuthProvider) RevokeAPIToken(ctx context.Context, userID string, tokenID string) error {
+	return errors.New("api token revocation handled by external auth provider portal")
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -216,6 +217,70 @@ func main() {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]string{"message": "Account deleted successfully"})
+			})
+
+			sub.Post("/tokens", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				var req struct {
+					Name string `json:"name"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				token, err := authProvider.CreateAPIToken(r.Context(), user.ID, req.Name)
+				if err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(token)
+			})
+
+			sub.Get("/tokens", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				tokens, err := authProvider.ListAPITokens(r.Context(), user.ID)
+				if err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(tokens)
+			})
+
+			sub.Delete("/tokens/{id}", func(w http.ResponseWriter, r *http.Request) {
+				user, ok := auth.GetUserFromContext(r.Context())
+				if !ok {
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				tokenID := chi.URLParam(r, "id")
+				if tokenID == "" {
+					http.Error(w, `{"error":"Token ID is required"}`, http.StatusBadRequest)
+					return
+				}
+				if err := authProvider.RevokeAPIToken(r.Context(), user.ID, tokenID); err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					if errors.Is(err, auth.ErrTokenNotFound) {
+						w.WriteHeader(http.StatusNotFound)
+					} else {
+						w.WriteHeader(http.StatusInternalServerError)
+					}
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "API token revoked successfully"})
 			})
 		})
 	})

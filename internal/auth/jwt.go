@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,12 +17,12 @@ import (
 	"mtvl/internal/idgen"
 )
 
-// UserModel represents the users table structure for GORM.
+// UserModel is the internal database model for users.
 type UserModel struct {
 	ID           string    `gorm:"primaryKey;type:uuid;size:36;column:id"`
 	Username     string    `gorm:"uniqueIndex;not null;column:username"`
 	Email        string    `gorm:"uniqueIndex;not null;column:email"`
-	PasswordHash string    `gorm:"column:password_hash;not null"`
+	PasswordHash string    `gorm:"not null;column:password_hash"`
 	CreatedAt    time.Time `gorm:"column:created_at"`
 }
 
@@ -35,7 +37,37 @@ func (u *UserModel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// JWTAuthProvider implements AuthProvider using GORM database and JWT tokens.
+// APITokenModel is the internal database model for 128-character API tokens.
+type APITokenModel struct {
+	ID         string     `gorm:"primaryKey;type:uuid;size:36;column:id"`
+	UserID     string     `gorm:"type:uuid;size:36;not null;column:user_id;index"`
+	Token      string     `gorm:"type:varchar(128);size:128;not null;uniqueIndex;column:token"`
+	Name       string     `gorm:"type:varchar(100);column:name"`
+	CreatedAt  time.Time  `gorm:"column:created_at"`
+	LastUsedAt *time.Time `gorm:"column:last_used_at"`
+}
+
+func (APITokenModel) TableName() string {
+	return "api_tokens"
+}
+
+func (t *APITokenModel) BeforeCreate(tx *gorm.DB) error {
+	if t.ID == "" {
+		t.ID = idgen.New()
+	}
+	return nil
+}
+
+// GenerateAPITokenString generates a 128-character cryptographically secure token.
+func GenerateAPITokenString() (string, error) {
+	bytes := make([]byte, 64)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes for api token: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// JWTAuthProvider implements AuthProvider using JWT and SQLite/Postgres.
 type JWTAuthProvider struct {
 	db        *gorm.DB
 	jwtSecret []byte
@@ -155,8 +187,32 @@ func (p *JWTAuthProvider) AuthenticateUser(ctx context.Context, usernameOrEmail,
 	return tokenStr, user, nil
 }
 
-// VerifyToken validates a JWT token and extracts User details.
+// VerifyToken validates a JWT token or a 128-character API token and extracts User details.
 func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (*User, error) {
+	tokenString = strings.TrimSpace(tokenString)
+	if tokenString == "" {
+		return nil, ErrInvalidToken
+	}
+
+	// 1. Check if token matches 128-character API token in database
+	if len(tokenString) == 128 && p.db != nil {
+		var tokenRecord APITokenModel
+		if err := p.db.WithContext(ctx).Where("token = ?", tokenString).First(&tokenRecord).Error; err == nil {
+			var u UserModel
+			if err := p.db.WithContext(ctx).Where("id = ?", idgen.Arg(tokenRecord.UserID)).First(&u).Error; err == nil {
+				now := time.Now()
+				_ = p.db.WithContext(ctx).Model(&tokenRecord).Update("last_used_at", now)
+				return &User{
+					ID:        u.ID,
+					Username:  u.Username,
+					Email:     u.Email,
+					CreatedAt: u.CreatedAt,
+				}, nil
+			}
+		}
+	}
+
+	// 2. Otherwise validate JWT token
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -165,6 +221,23 @@ func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (
 	})
 
 	if err != nil || !token.Valid {
+		// Fallback check API token in case of token format
+		if p.db != nil {
+			var tokenRecord APITokenModel
+			if err := p.db.WithContext(ctx).Where("token = ?", tokenString).First(&tokenRecord).Error; err == nil {
+				var u UserModel
+				if err := p.db.WithContext(ctx).Where("id = ?", idgen.Arg(tokenRecord.UserID)).First(&u).Error; err == nil {
+					now := time.Now()
+					_ = p.db.WithContext(ctx).Model(&tokenRecord).Update("last_used_at", now)
+					return &User{
+						ID:        u.ID,
+						Username:  u.Username,
+						Email:     u.Email,
+						CreatedAt: u.CreatedAt,
+					}, nil
+				}
+			}
+		}
 		return nil, ErrInvalidToken
 	}
 
@@ -204,6 +277,87 @@ func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (
 		Email:     u.Email,
 		CreatedAt: u.CreatedAt,
 	}, nil
+}
+
+// CreateAPIToken generates and stores a new 128-character API token for the specified user.
+func (p *JWTAuthProvider) CreateAPIToken(ctx context.Context, userID, name string) (*APIToken, error) {
+	if p.db == nil {
+		return nil, errors.New("database not available")
+	}
+
+	var user UserModel
+	if err := p.db.WithContext(ctx).Where("id = ?", idgen.Arg(userID)).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to load user: %w", err)
+	}
+
+	tokenStr, err := GenerateAPITokenString()
+	if err != nil {
+		return nil, err
+	}
+
+	tokenRecord := APITokenModel{
+		UserID:    user.ID,
+		Token:     tokenStr,
+		Name:      strings.TrimSpace(name),
+		CreatedAt: time.Now(),
+	}
+
+	if err := p.db.WithContext(ctx).Create(&tokenRecord).Error; err != nil {
+		return nil, fmt.Errorf("failed to save api token: %w", err)
+	}
+
+	return &APIToken{
+		ID:         tokenRecord.ID,
+		UserID:     tokenRecord.UserID,
+		Token:      tokenRecord.Token,
+		Name:       tokenRecord.Name,
+		CreatedAt:  tokenRecord.CreatedAt,
+		LastUsedAt: tokenRecord.LastUsedAt,
+	}, nil
+}
+
+// ListAPITokens returns all active API tokens for the specified user.
+func (p *JWTAuthProvider) ListAPITokens(ctx context.Context, userID string) ([]APIToken, error) {
+	if p.db == nil {
+		return nil, errors.New("database not available")
+	}
+
+	var records []APITokenModel
+	if err := p.db.WithContext(ctx).Where("user_id = ?", idgen.Arg(userID)).Order("created_at DESC").Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("failed to query api tokens: %w", err)
+	}
+
+	tokens := make([]APIToken, len(records))
+	for i, r := range records {
+		tokens[i] = APIToken{
+			ID:         r.ID,
+			UserID:     r.UserID,
+			Token:      r.Token,
+			Name:       r.Name,
+			CreatedAt:  r.CreatedAt,
+			LastUsedAt: r.LastUsedAt,
+		}
+	}
+	return tokens, nil
+}
+
+// RevokeAPIToken removes an API token belonging to the specified user.
+func (p *JWTAuthProvider) RevokeAPIToken(ctx context.Context, userID, tokenID string) error {
+	if p.db == nil {
+		return errors.New("database not available")
+	}
+
+	res := p.db.WithContext(ctx).Where("user_id = ? AND (id = ? OR token = ?)", idgen.Arg(userID), idgen.Arg(tokenID), tokenID).Delete(&APITokenModel{})
+	if res.Error != nil {
+		return fmt.Errorf("failed to delete api token: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrTokenNotFound
+	}
+	return nil
 }
 
 // UpdateUser updates user's profile details.
