@@ -208,6 +208,15 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var existing Movie
+	if err := m.db.WithContext(r.Context()).Where("LOWER(title) = ?", strings.ToLower(req.Title)).First(&existing).Error; err == nil {
+		respondError(w, http.StatusConflict, "A movie with this title already exists")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		respondError(w, http.StatusInternalServerError, "Failed to check existing movie: "+err.Error())
+		return
+	}
+
 	now := time.Now()
 	movie := Movie{
 		Title:       req.Title,
@@ -218,6 +227,10 @@ func (m *Module) createMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.db.WithContext(r.Context()).Create(&movie).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			respondError(w, http.StatusConflict, "A movie with this title already exists")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "Failed to insert movie: "+err.Error())
 		return
 	}

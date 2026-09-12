@@ -72,6 +72,57 @@ func TestTVShowsModuleCRUD(t *testing.T) {
 	}
 }
 
+func TestTVShowUniqueTitle(t *testing.T) {
+	db, _ := setupTestDB(t)
+	s1 := TVShow{Title: "Breaking Bad"}
+	if err := db.Create(&s1).Error; err != nil {
+		t.Fatalf("failed to create initial tv show: %v", err)
+	}
+	s2 := TVShow{Title: "Breaking Bad"}
+	if err := db.Create(&s2).Error; err == nil {
+		t.Fatalf("expected error when inserting duplicate tv show title, got nil")
+	}
+}
+
+func TestTVShowCreateDuplicateTitleError(t *testing.T) {
+	db, user := setupTestDB(t)
+	mod := NewModule(db)
+	router := chi.NewRouter()
+	authMw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithUserContext(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+	mod.RegisterRoutes(router, authMw)
+
+	body := []byte(`{"title":"The Wire","total_episodes":60}`)
+	req := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d", rr.Code)
+	}
+
+	req2 := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+	router.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for duplicate show title, got %d. Body: %s", rr2.Code, rr2.Body.String())
+	}
+
+	body3 := []byte(`{"title":"the wire"}`)
+	req3 := httptest.NewRequest("POST", "/api/v1/tvshows", bytes.NewBuffer(body3))
+	req3.Header.Set("Content-Type", "application/json")
+	rr3 := httptest.NewRecorder()
+	router.ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for case-insensitive duplicate show title, got %d. Body: %s", rr3.Code, rr3.Body.String())
+	}
+}
+
 func TestTVShowsSharedAcrossUsers(t *testing.T) {
 	db, creator := setupTestDB(t)
 	other := &auth.User{ID: idgen.New(), Username: "other", Email: "other@example.com"}

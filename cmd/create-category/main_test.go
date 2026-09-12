@@ -78,6 +78,12 @@ func TestCategoryGenerator(t *testing.T) {
 	if !strings.Contains(handlerCode, "idgen.Arg(user.ID)") || !strings.Contains(handlerCode, "idgen.Arg(userID)") {
 		t.Errorf("generated queries should bind user ids as UUIDs, not raw integers")
 	}
+	if !strings.Contains(migSQL, "title VARCHAR(255) NOT NULL UNIQUE") {
+		t.Errorf("expected title to be unique in generated migration")
+	}
+	if !strings.Contains(modelCode, "uniqueIndex") {
+		t.Errorf("expected uniqueIndex tag on title in generated model")
+	}
 
 	mysqlSQL := generateMigrationSQL(name, "mysql")
 	if strings.Contains(mysqlSQL, "AUTO_INCREMENT") || strings.Contains(mysqlSQL, "user_id INT") {
@@ -85,6 +91,9 @@ func TestCategoryGenerator(t *testing.T) {
 	}
 	if !strings.Contains(mysqlSQL, "user_id CHAR(36) NOT NULL") {
 		t.Errorf("expected user_id CHAR(36) NOT NULL in generated mysql migration")
+	}
+	if !strings.Contains(mysqlSQL, "title VARCHAR(255) NOT NULL UNIQUE") {
+		t.Errorf("expected title to be unique in generated mysql migration")
 	}
 
 	testCode := generateHandlerTestGo(name, "/api/v1/games")

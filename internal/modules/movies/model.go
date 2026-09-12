@@ -10,7 +10,7 @@ import (
 // Movie is a shared catalog item.
 type Movie struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:uuid;size:36;column:id"`
-	Title       string    `json:"title" gorm:"column:title;not null"`
+	Title       string    `json:"title" gorm:"column:title;not null;uniqueIndex"`
 	ReleaseYear int       `json:"release_year" gorm:"column:release_year"`
 	Director    string    `json:"director" gorm:"column:director"`
 	CreatedAt   time.Time `json:"created_at" gorm:"column:created_at"`

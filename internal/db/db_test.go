@@ -51,6 +51,26 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 	if strings.Contains(upSection(string(mysqlUsers)), "AUTO_INCREMENT") {
 		t.Errorf("mysql user unique id up migration should not keep auto increment ids")
 	}
+
+	pgCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00009_category_unique_titles.sql"))
+	if err != nil {
+		t.Fatalf("failed to read postgres category unique title migration: %v", err)
+	}
+	for _, table := range []string{"movies", "tv_shows", "books"} {
+		if !strings.Contains(upSection(string(pgCategoryTitles)), "CREATE UNIQUE INDEX") || !strings.Contains(upSection(string(pgCategoryTitles)), table+" (title)") {
+			t.Errorf("expected postgres unique index on %s (title)", table)
+		}
+	}
+
+	mysqlCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00009_category_unique_titles.sql"))
+	if err != nil {
+		t.Fatalf("failed to read mysql category unique title migration: %v", err)
+	}
+	for _, table := range []string{"movies", "tv_shows", "books"} {
+		if !strings.Contains(upSection(string(mysqlCategoryTitles)), "CREATE UNIQUE INDEX") || !strings.Contains(upSection(string(mysqlCategoryTitles)), table+" (title)") {
+			t.Errorf("expected mysql unique index on %s (title)", table)
+		}
+	}
 }
 
 func upSection(sql string) string {

@@ -72,6 +72,57 @@ func TestModuleCRUD(t *testing.T) {
 	}
 }
 
+func TestBookUniqueTitle(t *testing.T) {
+	db, _ := setupTestDB(t)
+	b1 := Book{Title: "Sample Book"}
+	if err := db.Create(&b1).Error; err != nil {
+		t.Fatalf("failed to create initial book: %v", err)
+	}
+	b2 := Book{Title: "Sample Book"}
+	if err := db.Create(&b2).Error; err == nil {
+		t.Fatalf("expected error when inserting duplicate book title, got nil")
+	}
+}
+
+func TestBookCreateDuplicateTitleError(t *testing.T) {
+	db, user := setupTestDB(t)
+	mod := NewModule(db)
+	router := chi.NewRouter()
+	authMw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithUserContext(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+	mod.RegisterRoutes(router, authMw)
+
+	body := []byte(`{"title":"Dune"}`)
+	req := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d", rr.Code)
+	}
+
+	req2 := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+	router.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for duplicate book title, got %d. Body: %s", rr2.Code, rr2.Body.String())
+	}
+
+	body3 := []byte(`{"title":"dune"}`)
+	req3 := httptest.NewRequest("POST", "/api/v1/books", bytes.NewBuffer(body3))
+	req3.Header.Set("Content-Type", "application/json")
+	rr3 := httptest.NewRecorder()
+	router.ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for case-insensitive duplicate book title, got %d. Body: %s", rr3.Code, rr3.Body.String())
+	}
+}
+
 func TestBooksSharedAcrossUsers(t *testing.T) {
 	db, creator := setupTestDB(t)
 	other := &auth.User{ID: idgen.New(), Username: "other", Email: "other@example.com"}
@@ -108,7 +159,7 @@ func TestBooksSharedAcrossUsers(t *testing.T) {
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 200 OK, got %d", rr.Code)
 	}
 
 	var list []Book

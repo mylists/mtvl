@@ -218,7 +218,7 @@ func generateMigrationSQL(name, dialect string) string {
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS {{NAME}} (
     id {{ITEM_PK}},
-    title VARCHAR(255) NOT NULL,
+    title VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -269,7 +269,7 @@ import (
 // {{STRUCT}} is a shared catalog item.
 type {{STRUCT}} struct {
 	ID        string    ` + "`json:\"id\" gorm:\"primaryKey;type:uuid;size:36;column:id\"`" + `
-	Title     string    ` + "`json:\"title\" gorm:\"column:title;not null\"`" + `
+	Title     string    ` + "`json:\"title\" gorm:\"column:title;not null;uniqueIndex\"`" + `
 	CreatedAt time.Time ` + "`json:\"created_at\" gorm:\"column:created_at\"`" + `
 	UpdatedAt time.Time ` + "`json:\"updated_at\" gorm:\"column:updated_at\"`" + `
 }
@@ -520,6 +520,15 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var existing {{STRUCT}}
+	if err := m.db.WithContext(r.Context()).Where("LOWER(title) = ?", strings.ToLower(req.Title)).First(&existing).Error; err == nil {
+		respondError(w, http.StatusConflict, "An item with this title already exists")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		respondError(w, http.StatusInternalServerError, "Failed to check existing item: "+err.Error())
+		return
+	}
+
 	now := time.Now()
 	item := {{STRUCT}}{
 		Title:     req.Title,
@@ -528,6 +537,10 @@ func (m *Module) createItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.db.WithContext(r.Context()).Create(&item).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			respondError(w, http.StatusConflict, "An item with this title already exists")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

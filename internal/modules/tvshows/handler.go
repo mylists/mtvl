@@ -203,6 +203,15 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var existing TVShow
+	if err := m.db.WithContext(r.Context()).Where("LOWER(title) = ?", strings.ToLower(req.Title)).First(&existing).Error; err == nil {
+		respondError(w, http.StatusConflict, "A TV show with this title already exists")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		respondError(w, http.StatusInternalServerError, "Failed to check existing TV show: "+err.Error())
+		return
+	}
+
 	now := time.Now()
 	show := TVShow{
 		Title:         req.Title,
@@ -212,6 +221,10 @@ func (m *Module) createTVShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.db.WithContext(r.Context()).Create(&show).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			respondError(w, http.StatusConflict, "A TV show with this title already exists")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "Failed to insert TV show: "+err.Error())
 		return
 	}

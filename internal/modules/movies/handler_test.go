@@ -61,7 +61,7 @@ func TestMoviesModuleCRUD(t *testing.T) {
 	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 200 OK, got %d", rr.Code)
 	}
 
 	var list []Movie
@@ -73,6 +73,59 @@ func TestMoviesModuleCRUD(t *testing.T) {
 	}
 	if _, ok := idgen.Parse(list[0].ID); !ok {
 		t.Errorf("expected unique UUID id, got %q", list[0].ID)
+	}
+}
+
+func TestMovieUniqueTitle(t *testing.T) {
+	db, _ := setupTestDB(t)
+	m1 := Movie{Title: "Inception"}
+	if err := db.Create(&m1).Error; err != nil {
+		t.Fatalf("failed to create initial movie: %v", err)
+	}
+	m2 := Movie{Title: "Inception"}
+	if err := db.Create(&m2).Error; err == nil {
+		t.Fatalf("expected error when inserting duplicate movie title, got nil")
+	}
+}
+
+func TestMovieCreateDuplicateTitleError(t *testing.T) {
+	db, user := setupTestDB(t)
+	mod := NewModule(db)
+	router := chi.NewRouter()
+	authMw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithUserContext(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+	mod.RegisterRoutes(router, authMw)
+
+	body := []byte(`{"title":"Interstellar","release_year":2014}`)
+	req := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d", rr.Code)
+	}
+
+	// Try creating again with exact title
+	req2 := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+	router.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for duplicate movie title, got %d. Body: %s", rr2.Code, rr2.Body.String())
+	}
+
+	// Try creating with different casing
+	body3 := []byte(`{"title":"interstellar"}`)
+	req3 := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBuffer(body3))
+	req3.Header.Set("Content-Type", "application/json")
+	rr3 := httptest.NewRecorder()
+	router.ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for case-insensitive duplicate movie title, got %d. Body: %s", rr3.Code, rr3.Body.String())
 	}
 }
 

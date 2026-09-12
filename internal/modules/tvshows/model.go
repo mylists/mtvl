@@ -10,7 +10,7 @@ import (
 // TVShow is a shared catalog item.
 type TVShow struct {
 	ID            string    `json:"id" gorm:"primaryKey;type:uuid;size:36;column:id"`
-	Title         string    `json:"title" gorm:"column:title;not null"`
+	Title         string    `json:"title" gorm:"column:title;not null;uniqueIndex"`
 	TotalEpisodes int       `json:"total_episodes" gorm:"column:total_episodes"`
 	CreatedAt     time.Time `json:"created_at" gorm:"column:created_at"`
 	UpdatedAt     time.Time `json:"updated_at" gorm:"column:updated_at"`
