@@ -101,7 +101,7 @@ func TestAPITokenLifecycle(t *testing.T) {
 		t.Errorf("expected user_id %s, got %s", user.ID, apiToken.UserID)
 	}
 	if len(apiToken.Token) != 128 {
-		t.Fatalf("expected 128-character API token, got length %d (%s)", len(apiToken.Token), apiToken.Token)
+		t.Fatalf("unexpected API token: %s (length %d)", apiToken.Token, len(apiToken.Token))
 	}
 	if apiToken.Name != "CI Runner" {
 		t.Errorf("expected name 'CI Runner', got %s", apiToken.Name)
@@ -110,7 +110,7 @@ func TestAPITokenLifecycle(t *testing.T) {
 	// 2. Verify with API Token
 	verified, err := provider.VerifyToken(ctx, apiToken.Token)
 	if err != nil {
-		t.Fatalf("failed to verify valid 128-char API token: %v", err)
+		t.Fatalf("failed to verify API token: %v", err)
 	}
 	if verified.ID != user.ID || verified.Username != "apitokenuser" {
 		t.Errorf("unexpected user from API token: %+v", verified)

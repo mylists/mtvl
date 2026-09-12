@@ -185,7 +185,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 				"post": map[string]interface{}{
-					"summary":  "Create 128-character API token tied to current user",
+					"summary":  "Create API token tied to current user",
 					"security": []map[string]interface{}{{"bearerAuth": []string{}}},
 					"requestBody": map[string]interface{}{
 						"content": map[string]interface{}{

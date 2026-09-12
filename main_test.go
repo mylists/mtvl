@@ -209,13 +209,13 @@ func TestAPITokenEndpointsIntegration(t *testing.T) {
 		t.Fatalf("failed to decode created token: %v", err)
 	}
 	if len(createdToken.Token) != 128 {
-		t.Fatalf("expected 128 character token, got length %d", len(createdToken.Token))
+		t.Fatalf("unexpected token: length %d", len(createdToken.Token))
 	}
 	if createdToken.UserID != user.ID {
 		t.Errorf("expected user_id %s, got %s", user.ID, createdToken.UserID)
 	}
 
-	// 2. Use 128-char API Token with X-API-Key to query /api/v1/auth/me
+	// 2. Use API Token with X-API-Key to query /api/v1/auth/me
 	meReq := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
 	meReq.Header.Set("X-API-Key", createdToken.Token)
 	rr = httptest.NewRecorder()
@@ -230,7 +230,7 @@ func TestAPITokenEndpointsIntegration(t *testing.T) {
 		t.Errorf("unexpected user from API token: %+v", meUser)
 	}
 
-	// 3. Use 128-char API Token to add movie to list
+	// 3. Use API Token to add movie to list
 	addMovieReq := httptest.NewRequest("POST", "/api/v1/movies", bytes.NewBufferString(`{"title":"Matrix"}`))
 	addMovieReq.Header.Set("Authorization", "Bearer "+createdToken.Token)
 	addMovieReq.Header.Set("Content-Type", "application/json")

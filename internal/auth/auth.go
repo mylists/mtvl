@@ -28,7 +28,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// APIToken represents a 128-character API token tied to a user.
+// APIToken represents an API token tied to a user.
 type APIToken struct {
 	ID         string     `json:"id"`
 	UserID     string     `json:"user_id"`

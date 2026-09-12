@@ -88,7 +88,7 @@ func TestAuthMiddlewareWithAPIToken(t *testing.T) {
 
 	middleware := Middleware(provider)(protectedHandler)
 
-	// 1. Authorization: Bearer <128-char token>
+	// 1. Authorization: Bearer <token>
 	req := httptest.NewRequest("GET", "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+apiToken.Token)
 	rr := httptest.NewRecorder()
@@ -97,7 +97,7 @@ func TestAuthMiddlewareWithAPIToken(t *testing.T) {
 		t.Errorf("expected 200 OK via Bearer API token, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// 2. X-API-Key: <128-char token>
+	// 2. X-API-Key: <token>
 	req = httptest.NewRequest("GET", "/protected", nil)
 	req.Header.Set("X-API-Key", apiToken.Token)
 	rr = httptest.NewRecorder()
@@ -106,7 +106,7 @@ func TestAuthMiddlewareWithAPIToken(t *testing.T) {
 		t.Errorf("expected 200 OK via X-API-Key header, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// 3. X-API-Token: <128-char token>
+	// 3. X-API-Token: <token>
 	req = httptest.NewRequest("GET", "/protected", nil)
 	req.Header.Set("X-API-Token", apiToken.Token)
 	rr = httptest.NewRecorder()

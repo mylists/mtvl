@@ -37,7 +37,7 @@ func (u *UserModel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// APITokenModel is the internal database model for 128-character API tokens.
+// APITokenModel is the internal database model for API tokens.
 type APITokenModel struct {
 	ID         string     `gorm:"primaryKey;type:uuid;size:36;column:id"`
 	UserID     string     `gorm:"type:uuid;size:36;not null;column:user_id;index"`
@@ -58,7 +58,7 @@ func (t *APITokenModel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// GenerateAPITokenString generates a 128-character cryptographically secure token.
+// GenerateAPITokenString generates a cryptographically secure token.
 func GenerateAPITokenString() (string, error) {
 	bytes := make([]byte, 64)
 	if _, err := rand.Read(bytes); err != nil {
@@ -187,15 +187,15 @@ func (p *JWTAuthProvider) AuthenticateUser(ctx context.Context, usernameOrEmail,
 	return tokenStr, user, nil
 }
 
-// VerifyToken validates a JWT token or a 128-character API token and extracts User details.
+// VerifyToken validates a JWT token or an API token and extracts User details.
 func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (*User, error) {
 	tokenString = strings.TrimSpace(tokenString)
 	if tokenString == "" {
 		return nil, ErrInvalidToken
 	}
 
-	// 1. Check if token matches 128-character API token in database
-	if len(tokenString) == 128 && p.db != nil {
+	// 1. Check if token matches API token in database
+	if p.db != nil {
 		var tokenRecord APITokenModel
 		if err := p.db.WithContext(ctx).Where("token = ?", tokenString).First(&tokenRecord).Error; err == nil {
 			var u UserModel
@@ -279,7 +279,7 @@ func (p *JWTAuthProvider) VerifyToken(ctx context.Context, tokenString string) (
 	}, nil
 }
 
-// CreateAPIToken generates and stores a new 128-character API token for the specified user.
+// CreateAPIToken generates and stores a new API token for the specified user.
 func (p *JWTAuthProvider) CreateAPIToken(ctx context.Context, userID, name string) (*APIToken, error) {
 	if p.db == nil {
 		return nil, errors.New("database not available")

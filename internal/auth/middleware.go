@@ -16,7 +16,7 @@ func Middleware(provider AuthProvider) func(http.Handler) http.Handler {
 				parts := strings.SplitN(authHeader, " ", 2)
 				if len(parts) == 2 && (parts[0] == "Bearer" || parts[0] == "token") {
 					tokenString = parts[1]
-				} else if len(parts) == 1 && len(parts[0]) == 128 {
+				} else if len(parts) == 1 && parts[0] != "" {
 					tokenString = parts[0]
 				} else {
 					http.Error(w, `{"error":"Invalid Authorization header format"}`, http.StatusUnauthorized)
