@@ -44,7 +44,7 @@ Adding a new tracking category requires only **3 steps**:
 
 ### Step 1: Add a Goose DB Migration
 
-Create `migrations/00004_books.sql`:
+Create `migrations/postgres/20260804191240_books.sql` (and `migrations/mysql/20260804191240_books.sql`):
 
 ```sql
 -- +goose Up

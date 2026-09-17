@@ -3,8 +3,11 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/pressly/goose/v3"
 )
 
 func TestOpenDBUnsupportedDriver(t *testing.T) {
@@ -30,7 +33,7 @@ func TestRebind(t *testing.T) {
 }
 
 func TestDialectMigrationSQLSyntax(t *testing.T) {
-	pgUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00008_user_unique_ids.sql"))
+	pgUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260823023445_user_unique_ids.sql"))
 	if err != nil {
 		t.Fatalf("failed to read postgres user unique id migration: %v", err)
 	}
@@ -41,7 +44,7 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 		t.Errorf("postgres user unique id up migration should not keep serial ids")
 	}
 
-	mysqlUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00008_user_unique_ids.sql"))
+	mysqlUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260823023445_user_unique_ids.sql"))
 	if err != nil {
 		t.Fatalf("failed to read mysql user unique id migration: %v", err)
 	}
@@ -52,7 +55,7 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 		t.Errorf("mysql user unique id up migration should not keep auto increment ids")
 	}
 
-	pgCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00009_category_unique_titles.sql"))
+	pgCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260912015858_category_unique_titles.sql"))
 	if err != nil {
 		t.Fatalf("failed to read postgres category unique title migration: %v", err)
 	}
@@ -62,7 +65,7 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 		}
 	}
 
-	mysqlCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00009_category_unique_titles.sql"))
+	mysqlCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260912015858_category_unique_titles.sql"))
 	if err != nil {
 		t.Fatalf("failed to read mysql category unique title migration: %v", err)
 	}
@@ -72,7 +75,7 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 		}
 	}
 
-	pgTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "00010_api_tokens.sql"))
+	pgTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260912020906_api_tokens.sql"))
 	if err != nil {
 		t.Fatalf("failed to read postgres api tokens migration: %v", err)
 	}
@@ -83,7 +86,7 @@ func TestDialectMigrationSQLSyntax(t *testing.T) {
 		t.Errorf("expected postgres api tokens unique index")
 	}
 
-	mysqlTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "00010_api_tokens.sql"))
+	mysqlTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260912020906_api_tokens.sql"))
 	if err != nil {
 		t.Fatalf("failed to read mysql api tokens migration: %v", err)
 	}
@@ -101,4 +104,41 @@ func upSection(sql string) string {
 		return sql
 	}
 	return sql[:idx]
+}
+
+func TestMigrationFileNamingConvention(t *testing.T) {
+	timestampRegex := regexp.MustCompile(`^(\d{14})_([a-z0-9_]+)\.sql$`)
+
+	for _, dialect := range []string{"postgres", "mysql"} {
+		dir := filepath.Join("..", "..", "migrations", dialect)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read %s migrations dir: %v", dialect, err)
+		}
+
+		if len(entries) == 0 {
+			t.Fatalf("no migrations found in %s", dialect)
+		}
+
+		var lastVersion int64
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			matches := timestampRegex.FindStringSubmatch(entry.Name())
+			if matches == nil {
+				t.Errorf("%s migration %q does not match YYYYMMDDHHMMSS_<name>.sql format", dialect, entry.Name())
+				continue
+			}
+
+			version, err := goose.NumericComponent(entry.Name())
+			if err != nil {
+				t.Errorf("goose failed to parse numeric component from %q: %v", entry.Name(), err)
+			}
+			if version <= lastVersion {
+				t.Errorf("migration %q version %d not strictly greater than previous version %d", entry.Name(), version, lastVersion)
+			}
+			lastVersion = version
+		}
+	}
 }

@@ -24,7 +24,7 @@ func (d *DocsHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		"info": map[string]interface{}{
 			"title":       "API",
 			"description": "Comprehensive RESTful API for backend",
-			"version":     "1.0.0",
+			"version":     "4.0.0",
 		},
 		"servers": []map[string]interface{}{
 			{
