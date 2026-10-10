@@ -16,11 +16,11 @@ import (
 	"github.com/mylists/movies"
 	"github.com/mylists/tvshows"
 
-	"mtvl/internal/docs"
-	"mtvl/internal/health"
-	"mtvl/internal/services"
-	"mtvl/pkg/auth"
-	"mtvl/pkg/core"
+	"github.com/mylists/mtvl/internal/docs"
+	"github.com/mylists/mtvl/internal/health"
+	"github.com/mylists/mtvl/internal/services"
+	"github.com/mylists/mtvl/pkg/auth"
+	"github.com/mylists/mtvl/pkg/core"
 )
 
 func TestFullServerIntegrationFlow(t *testing.T) {

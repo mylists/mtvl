@@ -263,7 +263,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"mtvl/internal/idgen"
+	"github.com/mylists/mtvl/pkg/idgen"
 )
 
 // {{STRUCT}} is a shared catalog item.
@@ -330,9 +330,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"mtvl/internal/auth"
-	"mtvl/internal/core"
-	"mtvl/internal/idgen"
+	"github.com/mylists/mtvl/pkg/auth"
+	"github.com/mylists/mtvl/pkg/core"
+	"github.com/mylists/mtvl/pkg/idgen"
 )
 
 type Module struct {
@@ -1017,8 +1017,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"mtvl/internal/auth"
-	"mtvl/internal/idgen"
+	"github.com/mylists/mtvl/pkg/auth"
+	"github.com/mylists/mtvl/pkg/idgen"
 )
 
 func setupTestDB(t *testing.T) (*gorm.DB, *auth.User) {

@@ -8,7 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"mtvl/pkg/idgen"
+	"github.com/mylists/mtvl/pkg/idgen"
 )
 
 func setupTestGormDB(t *testing.T) *gorm.DB {

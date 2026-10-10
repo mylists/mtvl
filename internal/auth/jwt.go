@@ -14,7 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"mtvl/internal/idgen"
+	"github.com/mylists/mtvl/internal/idgen"
 )
 
 // UserModel is the internal database model for users.

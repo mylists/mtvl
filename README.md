@@ -81,7 +81,7 @@ import (
     "net/http"
     "github.com/go-chi/chi/v5"
     "gorm.io/gorm"
-    "mtvl/pkg/core"
+    "github.com/mylists/mtvl/pkg/core"
 )
 
 type Module struct { db *gorm.DB }

@@ -1,4 +1,4 @@
-module mtvl
+module github.com/mylists/mtvl
 
 go 1.26.2
 

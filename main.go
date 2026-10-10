@@ -19,13 +19,13 @@ import (
 	"github.com/mylists/movies"
 	"github.com/mylists/tvshows"
 
-	"mtvl/config"
-	"mtvl/internal/docs"
-	"mtvl/internal/health"
-	"mtvl/internal/services"
-	"mtvl/pkg/auth"
-	"mtvl/pkg/core"
-	"mtvl/pkg/db"
+	"github.com/mylists/mtvl/config"
+	"github.com/mylists/mtvl/internal/docs"
+	"github.com/mylists/mtvl/internal/health"
+	"github.com/mylists/mtvl/internal/services"
+	"github.com/mylists/mtvl/pkg/auth"
+	"github.com/mylists/mtvl/pkg/core"
+	"github.com/mylists/mtvl/pkg/db"
 )
 
 // Embed goose SQL migrations

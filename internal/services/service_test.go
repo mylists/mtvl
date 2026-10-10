@@ -13,8 +13,8 @@ import (
 	"github.com/mylists/movies"
 	"github.com/mylists/tvshows"
 
-	"mtvl/pkg/auth"
-	"mtvl/pkg/idgen"
+	"github.com/mylists/mtvl/pkg/auth"
+	"github.com/mylists/mtvl/pkg/idgen"
 )
 
 func TestGetStatsUsesUUIDUserIDs(t *testing.T) {
