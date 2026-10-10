@@ -66,4 +66,21 @@ func TestRegistryRegistrationAndRoutes(t *testing.T) {
 	if rr.Code != http.StatusOK || rr.Body.String() != "mock list" {
 		t.Errorf("expected mock list response from /api/v1/movies, got %d / %s", rr.Code, rr.Body.String())
 	}
+
+	// Test GET /api/v1/user/lists
+	req = httptest.NewRequest("GET", "/api/v1/user/lists", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 OK from /api/v1/user/lists, got %d", rr.Code)
+	}
+	var userListsResp struct {
+		Lists []map[string]interface{} `json:"lists"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &userListsResp); err != nil {
+		t.Fatalf("failed to parse /api/v1/user/lists: %v", err)
+	}
+	if len(userListsResp.Lists) != 2 {
+		t.Errorf("expected 2 lists in user/lists response, got %d", len(userListsResp.Lists))
+	}
 }

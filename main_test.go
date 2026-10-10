@@ -12,15 +12,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"github.com/mylists/books"
+	"github.com/mylists/movies"
+	"github.com/mylists/tvshows"
 
-	"mtvl/internal/auth"
-	"mtvl/internal/core"
 	"mtvl/internal/docs"
 	"mtvl/internal/health"
-	"mtvl/internal/modules/books"
-	"mtvl/internal/modules/movies"
-	"mtvl/internal/modules/tvshows"
 	"mtvl/internal/services"
+	"mtvl/pkg/auth"
+	"mtvl/pkg/core"
 )
 
 func TestFullServerIntegrationFlow(t *testing.T) {
@@ -29,6 +29,7 @@ func TestFullServerIntegrationFlow(t *testing.T) {
 		t.Fatalf("failed to open in-memory database: %v", err)
 	}
 
+	_ = database.AutoMigrate(&auth.UserModel{}, &auth.APITokenModel{})
 	authProvider := auth.NewJWTAuthProvider(database, "test-secret-key")
 
 	registry := core.NewRegistry()
@@ -83,7 +84,34 @@ func TestFullServerIntegrationFlow(t *testing.T) {
 		t.Errorf("expected 3 registered categories, got %d", len(categories))
 	}
 
-	// 4. OpenAPI Spec & Docs
+	// 4. User category lists reference
+	_, err = authProvider.RegisterUser(context.Background(), "listuser", "listuser@example.com", "password123")
+	if err != nil {
+		t.Fatalf("failed to register user: %v", err)
+	}
+	token, _, err := authProvider.AuthenticateUser(context.Background(), "listuser", "password123")
+	if err != nil {
+		t.Fatalf("failed to authenticate user: %v", err)
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/user/lists", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("user lists query failed: %d, body: %s", rr.Code, rr.Body.String())
+	}
+	var userListsResp struct {
+		Lists []map[string]interface{} `json:"lists"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &userListsResp); err != nil {
+		t.Fatalf("failed to parse user lists response: %v", err)
+	}
+	if len(userListsResp.Lists) != 3 {
+		t.Errorf("expected 3 category lists for user, got %d", len(userListsResp.Lists))
+	}
+
+	// 5. OpenAPI Spec & Docs
 	req = httptest.NewRequest("GET", "/api/v1/openapi.json", nil)
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

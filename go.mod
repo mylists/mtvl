@@ -7,12 +7,21 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
+	github.com/mylists/books v0.0.0
+	github.com/mylists/movies v0.0.0
+	github.com/mylists/tvshows v0.0.0
 	github.com/pressly/goose/v3 v3.27.3
 	golang.org/x/crypto v0.54.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
+)
+
+replace (
+	github.com/mylists/books => ../books
+	github.com/mylists/movies => ../movies
+	github.com/mylists/tvshows => ../tvshows
 )
 
 require (

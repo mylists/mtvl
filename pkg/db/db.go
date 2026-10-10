@@ -1,0 +1,109 @@
+package db
+
+import (
+	"embed"
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/pressly/goose/v3"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+// OpenDB opens a database connection with GORM given driver and dsn.
+func OpenDB(driver, dsn string) (*gorm.DB, error) {
+	var dialector gorm.Dialector
+
+	if driver == "postgres" || driver == "postgresql" {
+		// Simple protocol avoids prepared-statement type mismatches
+		// (uuid = integer / uuid = text) when binding UUID columns.
+		dialector = postgres.New(postgres.Config{
+			DSN:                  dsn,
+			PreferSimpleProtocol: true,
+		})
+	} else if driver == "mysql" {
+		dialector = mysql.Open(dsn)
+	} else {
+		return nil, fmt.Errorf("unsupported database driver (%s): supported drivers are 'postgres', 'mysql'", driver)
+	}
+
+	gormDB, err := gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database (%s): %w", driver, err)
+	}
+
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database (%s): %w", driver, err)
+	}
+
+	return gormDB, nil
+}
+
+// RunMigrations runs goose migrations from embed.FS or directory for the specified dialect.
+func RunMigrations(gormDB *gorm.DB, driver string, migrationFS embed.FS, dir string) error {
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB for migrations: %w", err)
+	}
+
+	dialect := driver
+	if driver == "postgres" || driver == "postgresql" {
+		dialect = "postgres"
+	} else if driver == "mysql" {
+		dialect = "mysql"
+	} else {
+		return fmt.Errorf("unsupported migration dialect (%s): supported dialects are 'postgres', 'mysql'", driver)
+	}
+
+	if err := goose.SetDialect(dialect); err != nil {
+		return fmt.Errorf("failed to set goose dialect (%s): %w", dialect, err)
+	}
+
+	goose.SetBaseFS(migrationFS)
+
+	targetDir := dir
+	candidates := []string{
+		dir + "/" + dialect,
+	}
+
+	for _, candidate := range candidates {
+		if entries, err := migrationFS.ReadDir(candidate); err == nil && len(entries) > 0 {
+			targetDir = candidate
+			break
+		}
+	}
+
+	log.Printf("[DB] Running migrations with dialect: %s (dir: %s)", dialect, targetDir)
+	if err := goose.Up(sqlDB, targetDir); err != nil {
+		return fmt.Errorf("failed to run goose up migrations: %w", err)
+	}
+
+	return nil
+}
+
+// Rebind replaces '?' positional placeholders with '$1', '$2', ... for PostgreSQL.
+func Rebind(driver, query string) string {
+	if driver != "postgres" && driver != "postgresql" {
+		return query
+	}
+	var b strings.Builder
+	paramIdx := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			fmt.Fprintf(&b, "$%d", paramIdx)
+			paramIdx++
+		} else {
+			b.WriteByte(query[i])
+		}
+	}
+	return b.String()
+}
+
+

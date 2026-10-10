@@ -9,12 +9,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+	"github.com/mylists/books"
+	"github.com/mylists/movies"
+	"github.com/mylists/tvshows"
 
-	"mtvl/internal/auth"
-	"mtvl/internal/idgen"
-	"mtvl/internal/modules/books"
-	"mtvl/internal/modules/movies"
-	"mtvl/internal/modules/tvshows"
+	"mtvl/pkg/auth"
+	"mtvl/pkg/idgen"
 )
 
 type ServiceHandler struct {

@@ -6,11 +6,11 @@
 
 ## Key Features
 
-- **Extensible Category Modules**: Each category (e.g., movies, tv shows, books) is an isolated Go module implementing `core.CategoryModule`.
-- **Multi-Database Support**: Driven by Goose migrations, supporting **PostgreSQL** and **MySQL**.
-- **Pluggable Auth Subsystem**: Clean `auth.AuthProvider` interface with built-in JWT authentication + standard adapter for external providers (Auth0, Clerk, Supabase, Keycloak, or custom OIDC).
+- **Extensible Category Modules**: Each category (e.g., movies, tv shows, books) lives in its own repository under `mylists/` implementing `core.CategoryModule`.
+- **Dedicated Category Endpoints & Standalone Services**: Each category has its own API endpoint and can run as an independent microservice or hooked into `mtvl`.
+- **Category-Owned Migrations**: Database migrations and category details belong to each respective category repo.
+- **Shared Functions in mtvl**: `mtvl` provides shared auth, idgen, core registry, and references each category in user lists (`/api/v1/user/lists`).
 - **Dynamic Category Discovery**: Central registry automatically exposes active modules via GET `/api/v1/categories`.
-- **Public Shared Catalogs**: Movies, TV shows, books, and any new category are searchable read-only catalogs. Anyone can browse them; authentication is required to create, edit, or add catalog items to a personal list.
 
 ---
 
@@ -70,23 +70,23 @@ DROP TABLE IF EXISTS books;
 -- +goose StatementEnd
 ```
 
-### Step 2: Implement `core.CategoryModule`
+### Step 2: Implement `core.CategoryModule` in New Category Repo
 
-Create `internal/modules/books/handler.go`:
+Create `../<category>/handler.go` (e.g. `books/handler.go`):
 
 ```go
 package books
 
 import (
-    "database/sql"
     "net/http"
     "github.com/go-chi/chi/v5"
-    "mtvl/internal/core"
+    "gorm.io/gorm"
+    "mtvl/pkg/core"
 )
 
-type Module struct { db *sql.DB }
+type Module struct { db *gorm.DB }
 
-func NewModule(db *sql.DB) *Module { return &Module{db: db} }
+func NewModule(db *gorm.DB) *Module { return &Module{db: db} }
 
 func (m *Module) Info() core.CategoryInfo {
     return core.CategoryInfo{

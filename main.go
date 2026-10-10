@@ -15,16 +15,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/mylists/books"
+	"github.com/mylists/movies"
+	"github.com/mylists/tvshows"
+
 	"mtvl/config"
-	"mtvl/internal/auth"
-	"mtvl/internal/core"
-	"mtvl/internal/db"
 	"mtvl/internal/docs"
 	"mtvl/internal/health"
-	"mtvl/internal/modules/books"
-	"mtvl/internal/modules/movies"
-	"mtvl/internal/modules/tvshows"
 	"mtvl/internal/services"
+	"mtvl/pkg/auth"
+	"mtvl/pkg/core"
+	"mtvl/pkg/db"
 )
 
 // Embed goose SQL migrations
@@ -287,6 +288,7 @@ func main() {
 
 	// Register Category Extensions API Routes
 	registry.RegisterAllRoutes(router, auth.Middleware(authProvider))
+
 
 	// Register Services (Stats, Global Search, Export/Import)
 	serviceHandler := services.NewServiceHandler(database)

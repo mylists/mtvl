@@ -53,6 +53,28 @@ func (r *Registry) RegisterAllRoutes(router chi.Router, authMw func(http.Handler
 		_ = json.NewEncoder(w).Encode(r.GetModules())
 	})
 
+	// GET /api/v1/user/lists - Returns user list references for all registered categories
+	router.Group(func(sub chi.Router) {
+		sub.Use(authMw)
+		sub.Get("/api/v1/user/lists", func(w http.ResponseWriter, req *http.Request) {
+			modules := r.GetModules()
+			lists := make([]map[string]interface{}, 0, len(modules))
+			for _, m := range modules {
+				lists = append(lists, map[string]interface{}{
+					"category":      m.Category,
+					"display_name":  m.DisplayName,
+					"description":   m.Description,
+					"endpoint":      m.Endpoint,
+					"list_endpoint": m.Endpoint + "/list",
+				})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"lists": lists,
+			})
+		})
+	})
+
 	// Register sub-routes for each category module
 	for _, m := range r.modules {
 		m.RegisterRoutes(router, authMw)

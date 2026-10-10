@@ -33,46 +33,20 @@ func TestRebind(t *testing.T) {
 }
 
 func TestDialectMigrationSQLSyntax(t *testing.T) {
-	pgUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260823023445_user_unique_ids.sql"))
+	pgUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260804191235_users.sql"))
 	if err != nil {
-		t.Fatalf("failed to read postgres user unique id migration: %v", err)
+		t.Fatalf("failed to read postgres users migration: %v", err)
 	}
-	if !strings.Contains(string(pgUsers), "new_id UUID") {
-		t.Errorf("expected postgres user ids to convert to UUID")
-	}
-	if strings.Contains(upSection(string(pgUsers)), "SERIAL") {
-		t.Errorf("postgres user unique id up migration should not keep serial ids")
+	if !strings.Contains(string(pgUsers), "id UUID PRIMARY KEY") {
+		t.Errorf("expected postgres user ids to be UUID")
 	}
 
-	mysqlUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260823023445_user_unique_ids.sql"))
+	mysqlUsers, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260804191235_users.sql"))
 	if err != nil {
-		t.Fatalf("failed to read mysql user unique id migration: %v", err)
+		t.Fatalf("failed to read mysql users migration: %v", err)
 	}
 	if !strings.Contains(string(mysqlUsers), "CHAR(36)") {
-		t.Errorf("expected mysql user ids to convert to CHAR(36)")
-	}
-	if strings.Contains(upSection(string(mysqlUsers)), "AUTO_INCREMENT") {
-		t.Errorf("mysql user unique id up migration should not keep auto increment ids")
-	}
-
-	pgCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260912015858_category_unique_titles.sql"))
-	if err != nil {
-		t.Fatalf("failed to read postgres category unique title migration: %v", err)
-	}
-	for _, table := range []string{"movies", "tv_shows", "books"} {
-		if !strings.Contains(upSection(string(pgCategoryTitles)), "CREATE UNIQUE INDEX") || !strings.Contains(upSection(string(pgCategoryTitles)), table+" (title)") {
-			t.Errorf("expected postgres unique index on %s (title)", table)
-		}
-	}
-
-	mysqlCategoryTitles, err := os.ReadFile(filepath.Join("..", "..", "migrations", "mysql", "20260912015858_category_unique_titles.sql"))
-	if err != nil {
-		t.Fatalf("failed to read mysql category unique title migration: %v", err)
-	}
-	for _, table := range []string{"movies", "tv_shows", "books"} {
-		if !strings.Contains(upSection(string(mysqlCategoryTitles)), "CREATE UNIQUE INDEX") || !strings.Contains(upSection(string(mysqlCategoryTitles)), table+" (title)") {
-			t.Errorf("expected mysql unique index on %s (title)", table)
-		}
+		t.Errorf("expected mysql user ids to be CHAR(36)")
 	}
 
 	pgTokens, err := os.ReadFile(filepath.Join("..", "..", "migrations", "postgres", "20260912020906_api_tokens.sql"))
